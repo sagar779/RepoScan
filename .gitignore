@@ -7,3 +7,6 @@ __pycache__/
 .idea/
 venv/
 *.log
+
+Refactored_App/
+refactored_test_source/

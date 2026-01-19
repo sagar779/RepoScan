@@ -9,7 +9,13 @@ from src.scanner import Scanner
 from src.reader import FileReader
 from src.parser import Parser
 from src.reporter import Reporter
+from src.reporter import Reporter
 from src.logger import setup_logger
+try:
+    from refactoring_utility.check import generate_report
+except ImportError:
+    generate_report = None
+    logging.warning("Could not import refactoring_utility.check. Assessment tracker will not be generated.")
 
 def cleanup_old_reports(output_folder: str):
     """Removes previous scan reports to keep the output folder clean."""
@@ -111,6 +117,21 @@ def main():
             reporter = Reporter(config, all_findings)
             reporter.generate_report()
             print("Report generation successful.")
+
+            # 4. Assessment Tracker Integration
+            if generate_report:
+                print("\n[Phase 4] Assessment Tracking...")
+                extracted_path = os.path.join(config.output_folder, "extracted_code")
+                tracker_path = os.path.join(config.output_folder, "Refactoring_Assessment.xlsx")
+                
+                if os.path.exists(extracted_path):
+                    try:
+                        generate_report(extracted_path, tracker_path)
+                        print("Refactoring Assessment Tracker generated.")
+                    except Exception as e:
+                        logging.error(f"Failed to generate assessment tracker: {e}")
+                else:
+                    logging.warning("Extracted code folder not found. Skipping assessment.")
         except Exception as e:
             logging.error(f"Failed to generate report: {e}")
             print("Failed to generate report. Check logs.")
