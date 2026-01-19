@@ -48,7 +48,7 @@ class ScannerConfig:
 
     def validate(self):
         if not os.path.exists(self.root_folder):
-            raise ValueError(f"Root folder does not exist: {self.root_folder}")
+            raise ValueError(f"Root folder does not exist: {self.root_folder} (Absolute: {os.path.abspath(self.root_folder)})")
         if not os.path.exists(self.output_folder):
             try:
                 os.makedirs(self.output_folder)

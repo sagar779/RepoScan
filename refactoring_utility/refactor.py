@@ -38,7 +38,10 @@ def parse_extracted_filename(filename):
 def find_original_file(root_dir, sanitized_path):
     """
     Attempts to find the original file matching the sanitized path.
+    Supports exact match and suffix match (to handle Root folder varying depth).
     """
+    candidates = []
+    
     for root, dirs, files in os.walk(root_dir):
         for file in files:
             # Construct relative path
@@ -50,6 +53,16 @@ def find_original_file(root_dir, sanitized_path):
             
             if test_sanitized == sanitized_path:
                 return rel_path
+                
+            # Fuzzy: Check if one assumes the other is a subpath
+            # e.g. Scan was "Views_File", Refactor sees "Project_Views_File"
+            if test_sanitized.endswith(sanitized_path) or sanitized_path.endswith(test_sanitized):
+                candidates.append(rel_path)
+
+    # If exactly one fuzzy candidate, return it
+    if len(candidates) == 1:
+        return candidates[0]
+        
     return None
 
 def main():
@@ -60,11 +73,22 @@ def main():
     
     args = parser.parse_args()
 
+    # Validate Input
+    if not os.path.exists(args.root):
+        print(f"Error: The root directory '{args.root}' does not exist. Please check the path.")
+        return
+
     # 1. Copy Codebase to Output
     print(f"Creating refactored copy at: {args.output}")
     if os.path.exists(args.output):
         try:
-            shutil.rmtree(args.output)
+            # Helper to delete read-only files (like .git objects)
+            import stat
+            def remove_readonly(func, path, excinfo):
+                os.chmod(path, stat.S_IWRITE)
+                func(path)
+                
+            shutil.rmtree(args.output, onerror=remove_readonly)
         except Exception as e:
             print(f"Error cleaning output/destination {args.output}: {e}")
             return
