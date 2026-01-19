@@ -14,9 +14,9 @@ class Reporter:
 
     def bundle_code(self):
         """Extracts inline code to separate files."""
-        base_dir = os.path.join(self.config.output_folder, "codebundle")
-        js_dir = os.path.join(base_dir, "js")
-        css_dir = os.path.join(base_dir, "css")
+        base_dir = os.path.join(self.config.output_folder, "extracted_code")
+        js_dir = os.path.join(base_dir, "inline_javascript")
+        css_dir = os.path.join(base_dir, "inline_css")
         
         for d in [js_dir, css_dir]:
             if not os.path.exists(d):
@@ -39,9 +39,13 @@ class Reporter:
             # Sanitize path
             rel_path = self._get_relative_path(f.file_path)
             sanitized_path = rel_path.replace(os.sep, "_").replace("/", "_").replace("\\", "_")
+            
+            # Sanitize type (should be clean from parser, but safety first)
             safer_type = "".join([c if c.isalnum() else "_" for c in f.code_type])
             
-            filename = f"{sanitized_path}_{f.start_line}-{f.end_line}_{safer_type}{ext}"
+            # Naming convention: <dir>_<file>_<context>_line<start>-<end>.<ext>
+            # Example: login_index_scriptblock_line45-78.js
+            filename = f"{sanitized_path}_{safer_type}_line{f.start_line}-{f.end_line}{ext}"
             
             # Write file
             try:

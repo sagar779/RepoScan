@@ -44,10 +44,10 @@ class Parser:
         self.ajax_keywords = ['XMLHttpRequest', 'fetch', '$.ajax', 'axios', 'hxr']
 
     def parse(self, file_path: str, content: str) -> List[CodeSnippet]:
-        findings = []
+        all_findings = []
         
         # 1. Regex approach
-        findings.extend(self._scan_regex(file_path, content))
+        all_findings.extend(self._scan_regex(file_path, content))
         
         # 2. DOM Parsing
         # Prefer html.parser as it reliably supports sourceline in recent BS4 versions.
@@ -58,9 +58,23 @@ class Parser:
             # Fallback for really broken HTML
             soup = BeautifulSoup(content, 'lxml')
             
-        findings.extend(self._scan_dom(file_path, soup, content))
+        all_findings.extend(self._scan_dom(file_path, soup, content))
         
-        return findings
+        # 3. Deduplicate
+        unique_findings = []
+        seen = set()
+        
+        for finding in all_findings:
+            # Create a unique signature for the finding
+            # Using start_line and a hash of the code to avoid storing massive strings
+            # We strip the code to ignore minor whitespace diffs between Regex and DOM
+            key = (finding.start_line, finding.code_type, finding.full_code.strip())
+            
+            if key not in seen:
+                seen.add(key)
+                unique_findings.append(finding)
+                
+        return unique_findings
 
     def _scan_regex(self, file_path: str, content: str) -> List[CodeSnippet]:
         findings = []
@@ -72,7 +86,7 @@ class Parser:
         for i, line in enumerate(lines):
             line_num = i + 1
             if js_proto_pattern.search(line):
-                findings.append(CodeSnippet(file_path, line_num, line_num, 'JS', line.strip(), 'URI', full_code=line.strip()))
+                findings.append(CodeSnippet(file_path, line_num, line_num, 'JS', line.strip(), 'jsuri', full_code=line.strip()))
         return findings
 
     def _scan_dom(self, file_path: str, soup: BeautifulSoup, raw_content: str) -> List[CodeSnippet]:
@@ -98,7 +112,7 @@ class Parser:
                     line_count = full_code.count('\n')
                     end_line = line_num + line_count
                     
-                    findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', snippet, 'Script Block', full_code=full_code, ajax_detected=ajax))
+                    findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', snippet, 'scriptblock', full_code=full_code, ajax_detected=ajax))
 
         # 2. Event Handlers
         for tag in soup.find_all(True):
@@ -116,14 +130,14 @@ class Parser:
                     
                     snippet = f'{attr}="{full_code}"'
                     ajax = self._detect_ajax(full_code)
-                    findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', snippet, 'Event Handler', full_code=full_code, ajax_detected=ajax))
+                    findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', snippet, attr_lower, full_code=full_code, ajax_detected=ajax))
                 
                 if attr_lower in ['href', 'src']:
                     val = tag[attr]
                     if isinstance(val, str) and val.lower().strip().startswith('javascript:'):
                         line_num = self._get_line_number(tag, raw_content, val)
                         end_line = line_num + val.count('\n')
-                        findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', val, 'URI', full_code=val))
+                        findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', val, 'jsuri', full_code=val))
 
         # --- CSS ---
         # 1. Inline Style Blocks
@@ -136,7 +150,7 @@ class Parser:
                 findings.append(CodeSnippet(file_path, line_num, end_line, 'External', content.strip()[:100], 'External Style (@import)', full_code=content.strip()))
             
             end_line = line_num + content.strip().count('\n')
-            findings.append(CodeSnippet(file_path, line_num, end_line, 'CSS', content.strip()[:200], 'Style Block', full_code=content.strip()))
+            findings.append(CodeSnippet(file_path, line_num, end_line, 'CSS', content.strip()[:200], 'styleblock', full_code=content.strip()))
 
         # 2. Style Attributes
         for tag in soup.find_all(True):
@@ -147,7 +161,7 @@ class Parser:
                 if '<%' in str(val):
                      findings.append(CodeSnippet(file_path, line_num, end_line, 'CSS', f'style="{val}"', 'ASP.NET Style', full_code=val))
                 else:
-                     findings.append(CodeSnippet(file_path, line_num, end_line, 'CSS', f'style="{val}"', 'Style Attribute', full_code=val))
+                     findings.append(CodeSnippet(file_path, line_num, end_line, 'CSS', f'style="{val}"', 'inlinestyle', full_code=val))
 
         # 3. External Stylesheets
         for link in soup.find_all('link'):

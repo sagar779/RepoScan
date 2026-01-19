@@ -124,3 +124,46 @@ You can add the header globally in your `web.config`:
 </configuration>
 ```
 *Tip*: Use `Content-Security-Policy-Report-Only` first to test your rules against the scanner's findings.
+
+---
+
+## 5. Refactoring Workflow: Using Code Bundles
+You asked: *"Can I use the separate files to substitute for inline and internal css/js?"*
+**Yes!** That is the exact purpose of the **Extracted File** column and the `output/codebundle` folder.
+
+### **Does it track "Internal" vs "Inline"?**
+Yes. The tool tracks both:
+1.  **"Inline" (Attributes)**: Detected as **Type = Event Handler** (e.g., `onclick="..."`) or **Style Attribute**.
+2.  **"Internal" (Blocks)**: Detected as **Type = Script Block** (e.g., `<script>...</script>`) or **Style Block**.
+    *   *Note*: Both appear in the "Inline JavaScript/CSS" tabs because they break strict CSPs (unless you use Nonces).
+
+### **How to Substitute (Step-by-Step)**
+
+**Scenario**: You have a large script block in `contact.aspx`.
+
+1.  **Locate** the finding in the Excel Tracker.
+    *   *File Path*: `Views/contact.aspx`
+    *   *Type*: `Script Block`
+    *   *Extracted File*: `Views_contact.aspx_50-80_Script_Block.js`
+2.  **Retrieve** the file from `output/codebundle/js/Views_contact.aspx_50-80_Script_Block.js`.
+3.  **Rename & Move** it to your project's assets folder (e.g., `js/pages/contact.js`).
+4.  **Replace** the code in `contact.aspx`:
+    
+    **Before:**
+    ```html
+    <script>
+       function validateForm() { ... }
+    </script>
+    ```
+
+    **After:**
+    ```html
+    <script src="/js/pages/contact.js"></script>
+    ```
+5.  **Whitelist** the file in your CSP (if strictly checking origins, though `self` covers local files).
+
+**For Attributes (`onclick`):**
+You cannot just replace `onclick="..."` with `<script src="...">`. You must **rewrite** the logic.
+1.  Take the extracted code from the bundle.
+2.  Put it in a JS file.
+3.  Use `document.getElementById('btn').addEventListener('click', ...)` instead of `onclick`.

@@ -1,5 +1,6 @@
 import sys
 import os
+import shutil
 import time
 import glob
 import logging
@@ -24,6 +25,15 @@ def cleanup_old_reports(output_folder: str):
                 os.remove(f)
             except OSError as e:
                 logging.error(f"Could not delete {f}: {e}")
+    
+    # Clean up extracted_code folder
+    extracted_code_dir = os.path.join(output_folder, "extracted_code")
+    if os.path.exists(extracted_code_dir):
+        try:
+            logging.info(f"Removing old extracted code in {extracted_code_dir}...")
+            shutil.rmtree(extracted_code_dir)
+        except OSError as e:
+            logging.error(f"Could not delete extracted codes directory {extracted_code_dir}: {e}")
 
 def main():
     # 0. Setup Logging
