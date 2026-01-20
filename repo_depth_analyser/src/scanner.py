@@ -35,7 +35,10 @@ class Scanner:
                 
                 # Get extension
                 _, ext = os.path.splitext(file)
-                ext = ext.lower()
+                if not ext:
+                    ext = "(No Extension)"
+                else:
+                    ext = ext.lower()
                 
                 # Count lines (Metadata depth)
                 lines = self.count_lines(file_path)
