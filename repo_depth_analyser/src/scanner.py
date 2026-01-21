@@ -20,8 +20,6 @@ class Scanner:
         """Walks the directory and collects metadata."""
         print(f"Scanning directory: {self.target_dir}")
         for root, dirs, files in os.walk(self.target_dir):
-            # Prune excluded directories
-            dirs[:] = [d for d in dirs if d not in {'.git', '__pycache__', '.vscode', 'node_modules', 'output'}]
             
             # Directory Metadata
             rel_dir = os.path.relpath(root, self.target_dir)
@@ -32,8 +30,6 @@ class Scanner:
             depth = 0 if rel_dir == '(Root)' else rel_dir.count(os.sep) + 1
 
             for file in files:
-                if file.startswith('~$') or file.endswith('.pyc'):
-                    continue
                 file_path = os.path.join(root, file)
                 size_kb = os.path.getsize(file_path) / 1024
                 
