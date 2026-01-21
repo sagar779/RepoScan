@@ -40,11 +40,9 @@ class Scanner:
             'ajax_call': re.compile(
                 r'(\bfetch\s*\(|'
                 r'new\s+XMLHttpRequest\s*\(|'
+                r'[A-Za-z_$]\w*\s*\.\s*(?:ajax|get|post|getJSON|getScript|load|request)\s*\(|'  # Broad Method Call
                 r'\.open\s*\(\s*["\'](?:GET|POST|PUT|DELETE|PATCH)["\']|'
                 r'\baxios(?:\.\w+)?\s*\(|'
-                r'\$\.ajax\s*\(|'
-                r'\$\.get\s*\(|'
-                r'\$\.post\s*\(|'
                 r'new\s+WebSocket\s*\(|'
                 r'new\s+EventSource\s*\()',
                 re.IGNORECASE
@@ -54,8 +52,8 @@ class Scanner:
             'dynamic_js': re.compile(
                 r'(\.src\s*=\s*["\'][^"\']+\.js["\']|'
                 r'document\.createElement\s*\(\s*["\']script["\']\s*\)|'
-                r'\.appendChild\s*\([^)]*script[^)]*\)|'
-                r'\.insertBefore\s*\([^)]*script[^)]*\)|'
+                r'\.appendChild\s*\(|'  # Broad DOM insertion
+                r'\.insertBefore\s*\(|'
                 r'eval\s*\(|'
                 r'new\s+Function\s*\(|'
                 r'setTimeout\s*\(|'
@@ -67,7 +65,7 @@ class Scanner:
                 re.IGNORECASE
             ),
             'dynamic_css': re.compile(
-                r'(\.src\s*=\s*["\'][^"\']+\.css["\']|'  # Specific catch for some frameworks/loaders
+                r'(\.src\s*=\s*["\'][^"\']+\.css["\']|'
                 r'document\.createElement\s*\(\s*["\']style["\']\s*\)|'
                 r'document\.createElement\s*\(\s*["\']link["\']\s*\)|'
                 r'\.rel\s*=\s*["\']stylesheet["\']|'
