@@ -69,6 +69,9 @@ class Scanner:
                 r'new\s+Request\s*\(|'          # Fetch API Request
                 r'\bJSON\.parse\s*\(|'          # Native JSON
                 r'\bJSON\.stringify\s*\(|'      # Native JSON
+                r'<\w+:UpdatePanel|'            # ASP.NET Partial Rendering
+                r'<\w+:ScriptManager|'          # ASP.NET AJAX Enabler
+                r'\[WebMethod\]|'               # ASP.NET AJAX Endpoint
                 r'\$http\b)',                   # Angular 1.x / Vue Resource
                 re.IGNORECASE
             ),
@@ -242,6 +245,20 @@ class Scanner:
                              category = "Construct"
                              is_logical_request = False
                              difficulty = "Easy"
+                        elif 'updatepanel' in lower_match:
+                             capability = "Partial Rendering (UpdatePanel)"
+                             category = "Request"
+                             difficulty = "Hard"
+                        elif 'scriptmanager' in lower_match:
+                             capability = "AJAX Enabler"
+                             category = "Config"
+                             is_logical_request = False
+                             difficulty = "Medium"
+                        elif 'webmethod' in lower_match:
+                             capability = "AJAX Endpoint (Server)"
+                             category = "Server"
+                             is_logical_request = False
+                             difficulty = "Medium"
                         elif 'new xmlhttprequest' in lower_match or '.open' in lower_match:
                              capability = "XHR Construct"
                              category = "Construct"
