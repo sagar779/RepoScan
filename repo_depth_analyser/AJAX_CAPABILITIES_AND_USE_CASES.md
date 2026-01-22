@@ -86,3 +86,48 @@ When scanning code, identifying the *Capability* determines the **Risk Profile**
 *   **JS Loading** → **Security Audit** (Where is that code coming from? Is it trusted?)
 *   **CSS Loading** → UI/UX Audit (Breaking changes?)
 *   **Telemetry** → Privacy Audit (GDPR/Compliance)
+
+---
+
+## Deep Dive: Runtime Behavior & Detection Strategy
+
+### 1. Does AJAX change the Source Code?
+**NO.** The original source code file on the server (e.g., `index.php`, `app.js`) remains untouched.
+
+**However, it DOES change the "DOM" (Document Object Model).**
+*   **Source View:** If you Right-Click > *View Source* on a page, you will **NOT** see content loaded by AJAX.
+*   **Inspector View:** If you Right-Click > *Inspect Element*, you **WILL** see the new content (new `<div>`s, tables, etc.) that AJAX injected.
+*   **Implication:** Simple text scrapers (like `curl`) will miss AJAX content. You need a browser-based crawler or a JS-aware scanner to see it.
+
+### 2. Can we detect ALL AJAX from the Repo (Source Code) alone?
+**YES and NO.**
+
+#### What Static Analysis (RepoScan) SEES:
+*   It sees the **Definition** of the call: `fetch('/api/data')`.
+*   It sees **Hardcoded URLs:** `url: "https://api.external.com/users"`.
+*   It sees the **Intent:** "This file *tries* to load a script."
+
+#### What Static Analysis MISSES (but Dynamic Analysis catches):
+*   **Computed URLs:**
+    ```javascript
+    // Static scan sees generic variable usage
+    let endpoint = config.host + "/api/" + actionType; 
+    fetch(endpoint); 
+    ```
+    *A static scanner doesn't know what `config.host` is.*
+*   **Runtime Conditions:** "Only make this call if User is Admin."
+
+### 3. Do we need a Crawler?
+It depends on your goal:
+
+*   **Goal: "Find all places where we use AJAX"** (Audit/Security Review)
+    *   ✅ **RepoScan (Static)** is best. It finds 100% of the *code locations* that trigger AJAX, even if the URL is complex.
+
+*   **Goal: "List every exact URL we ever call"** (Firewall Allow-list)
+    *   ✅ **Crawler (Dynamic)** is better. It literally runs the app, clicks buttons, and captures the *final computed URLs* (e.g., `https://api.mysite.com/v1/users`).
+
+### 4. Internal vs. External URLs
+AJAX is agnostic. It doesn't care if the URL is yours or Google's.
+*   **Internal:** `/api/login` (Relative path, same server)
+*   **External:** `https://analytics.google.com/collect` (Absolute path, 3rd party)
+*   **RepoScan Detection:** Catches **BOTH**. It looks for the *mechanism* (`fetch`), not the *destination*.
