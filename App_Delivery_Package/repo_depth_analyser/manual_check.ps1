@@ -48,22 +48,9 @@ foreach ($File in $Files) {
         }
     }
 
-    # 5. AJAX Calls: comprehensive pattern matching (matches scanner.py exactly)
-    # Includes: fetch, XMLHttpRequest, jQuery, axios, .open(), .send(), WebSocket, EventSource
-    $AjaxPatterns = @"
-(?x)  # Enable verbose mode for readability
-(
-    \bfetch\s*\(|
-    new\s+XMLHttpRequest\s*\(|
-    (?:\$|jQuery|axios|superagent|http)\s*\.\s*(?:ajax|get|post|getJSON|getScript|load|request)\s*\(|
-    \.open\s*\(\s*["'](?:GET|POST|PUT|DELETE|PATCH)["']|
-    \bonreadystatechange\s*=|
-    \.send\s*\(|
-    \baxios(?:\.\w+)?\s*\(|
-    new\s+WebSocket\s*\(|
-    new\s+EventSource\s*\(
-)
-"@
+    # 5. AJAX Calls: strict pattern matching
+    # Matches: $.ajax, fetch(, axios(, new XMLHttpRequest
+    $AjaxPatterns = "(?:\$|jQuery|axios|superagent|http)\s*\.\s*(?:ajax|get|post|getJSON|getScript|load|request)\s*\(|\bfetch\s*\(|new\s+XMLHttpRequest\s*\("
     $Matches = $Content | Select-String -Pattern $AjaxPatterns -AllMatches
     if ($Matches) { $Metrics["Ajax_Calls"] += $Matches.Matches.Count }
 }
@@ -71,7 +58,3 @@ foreach ($File in $Files) {
 Write-Host "`n--- PowerShell Manual Check Results ---" -ForegroundColor Yellow
 $Metrics.GetEnumerator() | Sort-Object Name | Format-Table -AutoSize
 Write-Host "Total Files Scanned: $TotalFiles"
-
-Write-Host "`n--- For Consistency Verification ---" -ForegroundColor Cyan
-Write-Host "Run this command to verify against tool output:"
-Write-Host "python verify_consistency.py $($Metrics['Inline_CSS']) $($Metrics['Internal_Style']) $($Metrics['Inline_JS']) $($Metrics['Internal_Script']) $($Metrics['Ajax_Calls'])" -ForegroundColor Green
