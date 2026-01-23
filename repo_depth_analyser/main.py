@@ -106,7 +106,7 @@ def main():
     total_files = len(inventory)
     total_dirs = len(dir_stats)
     ajax_calls = sum(1 for detail in ajax_details if detail.get('Is_Counted') == 'Yes')
-    total_lines = sum(item.get('Total_Lines', 0) for item in inventory)
+    total_lines = sum(item.get('Line_Count', 0) for item in inventory)
     total_size_kb = sum(item.get('Size_KB', 0) for item in inventory)
     total_size_mb = total_size_kb / 1024
     
