@@ -1,1 +1,0 @@
-alert('Hello World! Inline handler works.')

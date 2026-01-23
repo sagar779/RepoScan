@@ -226,6 +226,7 @@ class Reporter:
                 self._style_worksheet(writer.sheets['Directory_Analysis'])
                 self._style_worksheet(writer.sheets['File_Details'])
                 self._style_worksheet(writer.sheets['Complexity_Metrics'])
+                
                 self._style_worksheet(writer.sheets['AJAX_Detailed_Report'])
 
             print("Report generated successfully.")
