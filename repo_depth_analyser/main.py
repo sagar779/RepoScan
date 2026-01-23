@@ -9,15 +9,28 @@ from src.reporter import Reporter
 def print_banner():
     """Display professional branded banner"""
     width = 80
-    banner = f"""
-{'=' * width}
-{'RepoScan'.center(width)}
-
-{'RepoScan v1.0. Property owned by Castellum Labs.'.center(width)}
-{'Authors: Gopikrishna Manikyala, Sushanth Pasham, Brijith K Biju'.center(width)}
-{'=' * width}
+def print_banner():
+    """Display professional branded banner"""
+    width = 80
+    # ASCII Art for "RepoScan"
+    ascii_art = r"""
+ ____                  ____                  
+|  _ \ ___ _ __   ___ / ___|  ___ __ _ _ __  
+| |_) / _ \ '_ \ / _ \\___ \ / __/ _` | '_ \ 
+|  _ <  __/ |_) | (_) |___) | (_| (_| | | | |
+|_| \_\___| .__/ \___/|____/ \___\__,_|_| |_|
+          |_|                                
 """
-    print(banner)
+    print("=" * width)
+    for line in ascii_art.splitlines():
+        if line.strip():
+            print(line.center(width))
+    
+    print("Software Depth Analysis & Reporting Utility".center(width))
+    print()
+    print("RepoScan v1.0. Property owned by Castellum Labs.".center(width))
+    print("Authors: Gopikrishna Manikyala, Sushanth Pasham, Brijith K Biju".center(width))
+    print("=" * width)
 
 def print_footer(summary_stats, output_file):
     """Display completion footer with summary and save to text file"""
