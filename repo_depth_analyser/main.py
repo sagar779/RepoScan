@@ -66,10 +66,19 @@ def main():
         if len(sys.argv) <= 1: input("\nPress Enter to exit...")
         sys.exit(1)
     
+    # Ask for verbose mode (only in interactive mode)
+    verbose = False
+    if len(sys.argv) <= 1:
+        print("\nEnable verbose output? (Show detailed folder scanning progress)")
+        verbose_input = input("(y/n) [default: n]: ").strip().lower()
+        verbose = verbose_input in ['y', 'yes']
+    
     print(f"\nStarting scan...")
     print(f"  Target: {target_path}")
     print(f"  Output: {output_path}")
     print(f"  Time:   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    if verbose:
+        print(f"  Mode:   Verbose (detailed progress)")
     print("\n" + "=" * 66)
     
     # Initialize components
@@ -78,7 +87,7 @@ def main():
     
     # Run scan
     print("\nAnalyzing codebase structure...")
-    inventory, dir_stats, ajax_details = scanner.scan()
+    inventory, dir_stats, ajax_details = scanner.scan(verbose=verbose)
     
     if not inventory:
         print("\nWarning: No files found to report.")

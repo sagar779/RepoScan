@@ -507,9 +507,8 @@ class Scanner:
             'file_path': file_path
         }
 
-    def scan(self):
+    def scan(self, verbose=False):
         """Walks the directory and collects metadata."""
-        print(f"Scanning directory: {self.target_dir}")
         # Collect all files to scan
         all_files = []
         for root, dirs, files in os.walk(self.target_dir):
@@ -518,17 +517,41 @@ class Scanner:
             
             for file in files:
                 all_files.append((root, file))
+        
+        if verbose:
+            print(f"\nFound {len(all_files):,} files in {len(set(r for r, f in all_files)):,} directories")
+            print("\nScanning folders:")
+            print("-" * 66)
                 
         # Use ThreadPoolExecutor for concurrent scanning
         results = []
+        processed_dirs = set()
         with concurrent.futures.ThreadPoolExecutor(max_workers=10) as executor:
             future_to_file = {executor.submit(self.process_file, r, f): (r, f) for r, f in all_files}
             for future in concurrent.futures.as_completed(future_to_file):
                 try:
                     data = future.result()
                     results.append(data)
+                    
+                    # Verbose progress per folder
+                    if verbose and data['root'] not in processed_dirs:
+                        processed_dirs.add(data['root'])
+                        rel_dir = os.path.relpath(data['root'], self.target_dir)
+                        if rel_dir == '.':
+                            rel_dir = '(Root)'
+                        
+                        # Count elements in this directory
+                        dir_results = [r for r in results if r['root'] == data['root']]
+                        total_inline_js = sum(r['metrics']['inline_js'] for r in dir_results)
+                        total_inline_css = sum(r['metrics']['inline_css'] for r in dir_results)
+                        total_ajax = sum(r['metrics']['ajax_calls'] for r in dir_results)
+                        
+                        print(f"  {rel_dir}")
+                        print(f"    Files: {len(dir_results)} | JS: {total_inline_js} | CSS: {total_inline_css} | AJAX: {total_ajax}")
+                        
                 except Exception as exc:
-                    print(f"File generated an exception: {exc}")
+                    if verbose:
+                        print(f"  Warning: {exc}")
 
         # Aggregate Results
         all_ajax_details = []
@@ -575,5 +598,7 @@ class Scanner:
                 stats['extensions'] = collections.defaultdict(int)
             stats['extensions'][item['ext']] += 1
 
-        print(f"Scan complete. Found {len(self.file_inventory)} files.")
+        if verbose:
+            print("-" * 66)
+            print(f"Processed {len(results):,} files\n")
         return self.file_inventory, self.directory_stats, all_ajax_details
