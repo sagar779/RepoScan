@@ -18,9 +18,14 @@ HOW TO USE (WINDOWS)
 --------------------------------------------------
 HOW TO USE (LINUX / MAC)
 --------------------------------------------------
-1. unzip source_code.zip
-2. Run: ./run_linux.sh
-   (This will install dependencies in a safe environment and launch the tool)
+OPTION 1: Standalone Binary (Recommended)
+1. Make executable: chmod +x RepoScan_Linux
+2. Run: ./RepoScan_Linux
+   (No Python installation required!)
+
+OPTION 2: Script-based (If binary doesn't work)
+1. Run: ./run_linux.sh
+   (This will auto-unzip source code, install dependencies, and launch)
 
 --------------------------------------------------
 OUTPUT LOCATION (IMPORTANT)
