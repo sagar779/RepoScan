@@ -2,9 +2,11 @@
 RepoScan - Application Depth Analysis Tool
 ==================================================
 
-WHAT IS THIS?
-This tool scans your codebase to identify AJAX calls, Technical Debt, 
-Legacy Patterns, and Modern Dependencies. It produces a detailed Excel report.
+RepoScan analyzes your application codebase to measure size, complexity, and technical depth. 
+It identifies AJAX patterns, legacy dependencies, modern frameworks, CSS/JavaScript usage, and 
+technical debt across your entire project. The tool generates a comprehensive Excel report with 
+detailed metrics, file-level analysis, and actionable insights to help assess modernization needs 
+and migration planning.
 
 ==================================================
 WINDOWS USERS
@@ -42,13 +44,3 @@ REQUIREMENTS
 ==================================================
 - Windows: None (Everything included in .exe)
 - Linux/Mac: None (Everything included in binary)
-
-No Python, no dependencies, no installation required!
-
-==================================================
-SUPPORT
-==================================================
-If you encounter any issues, please share:
-1. Your operating system (Windows/Linux/Mac)
-2. The error message (if any)
-3. The Excel report (if generated)
