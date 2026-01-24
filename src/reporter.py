@@ -174,10 +174,17 @@ class Reporter:
         ws.cell(row=4, column=2, value=os.path.abspath(self.config.root_folder))
 
         # Stats
+        # Stats
         js_count = len([f for f in self.findings if f.category == 'JS'])
         css_count = len([f for f in self.findings if f.category == 'CSS'])
         ext_count = len([f for f in self.findings if f.category == 'External'])
-        total_count = len(self.findings)
+        
+        # Explicit sum to match user expectation (Reported Categories)
+        total_count = js_count + css_count + ext_count
+        
+        # Debug mismatch if any
+        if len(self.findings) != total_count:
+            logging.debug(f"Note: Total findings ({len(self.findings)}) != Displayed Sum ({total_count}). Some categories hidden.")
         
         # AJAX & Dynamic Stats (Literal Counts)
         ajax_count = sum([getattr(f, 'ajax_count', 0) for f in self.findings])
