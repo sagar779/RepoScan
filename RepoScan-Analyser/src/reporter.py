@@ -88,10 +88,18 @@ class Reporter:
         
         self.wb = wb 
         self._create_summary_sheet()
-        self._create_js_sheet()
-        self._create_css_sheet()
+        
+        # JS Trackers (Refactored)
+        self._create_inline_js_sheet()
+        self._create_internal_js_sheet()
+        self._create_external_js_sheet()
+        
+        # CSS Trackers (Refactored)
+        self._create_inline_css_sheet()
+        self._create_internal_css_sheet()
+        self._create_external_css_sheet()
+        
         self._create_ajax_sheet() # Merged back
-        self._create_external_sheet()
         self._create_legend_sheet() # New Legend
         
         self._save_wb(wb, "Code_Inventory.xlsx")
@@ -174,19 +182,36 @@ class Reporter:
         ws.cell(row=4, column=2, value=os.path.abspath(self.config.root_folder))
 
         # Stats Breakdown
-        inline_js = len([f for f in self.findings if f.category == 'JS' and f.source_type == 'INLINE'])
-        internal_js = len([f for f in self.findings if f.category == 'JS' and f.source_type == 'LOCAL'])
         
-        inline_css = len([f for f in self.findings if f.category == 'CSS' and f.source_type == 'INLINE'])
-        internal_css = len([f for f in self.findings if f.category == 'CSS' and f.source_type == 'LOCAL'])
+        # 1. Inline JS (Attributes: onclick, javascript:) -> Matches User "Inline"
+        inline_js_attr = len([f for f in self.findings if f.category == 'JS' and f.source_type == 'INLINE' and f.code_type != 'scriptblock'])
         
-        ext_count = len([f for f in self.findings if f.category == 'External'])
+        # 2. Internal JS (Script Blocks) -> Matches User "Internal"
+        internal_js_blocks = len([f for f in self.findings if f.category == 'JS' and f.source_type == 'INLINE' and f.code_type == 'scriptblock'])
         
+        # 3. External JS (All src references: Local files AND Remote URLs) -> Matches User "External"
+        # Parser labels local src as 'source_type=LOCAL'. Remote as 'REMOTE'.
+        external_js_refs = len([f for f in self.findings if f.category in ['JS', 'External', 'Internal'] and f.source_type in ['LOCAL', 'REMOTE']])
+        # Note: We filter strictly just in case category names vary, but source_type is the source of truth here.
+        # Actually, let's be precise based on 'JS'/'External' categories in parser:
+        # local src -> category='Internal', source='LOCAL'
+        # remote src -> category='External', source='REMOTE'
+        # We want to group BOTH as "External" in the report.
+        external_js_combined = len([f for f in self.findings if f.source_type in ['LOCAL', 'REMOTE'] and ('script' in f.code_type.lower() or f.category in ['JS', 'Internal', 'External']) and 'css' not in f.code_type.lower() and 'style' not in f.code_type.lower()])
+
+        # CSS Logic
+        inline_css_attr = len([f for f in self.findings if f.category == 'CSS' and f.source_type == 'INLINE' and 'styleblock' not in f.code_type])
+        internal_css_blocks = len([f for f in self.findings if f.category == 'CSS' and f.source_type == 'INLINE' and f.code_type == 'styleblock'])
+        
+        # External CSS (Local <link> + Remote <link>)
+        external_css_combined = len([f for f in self.findings if f.source_type in ['LOCAL', 'REMOTE'] and ('style' in f.code_type.lower() or 'css' in f.code_type.lower() or f.category == 'CSS')])
+
         # Explicit sum
-        total_count = inline_js + internal_js + inline_css + internal_css + ext_count
+        total_count = inline_js_attr + internal_js_blocks + external_js_combined + inline_css_attr + internal_css_blocks + external_css_combined
         
-        # Debug mismatch if any
+        # Debug
         if len(self.findings) != total_count:
+            # It's possible some finding falls through if code_type/category is weird.
             logging.debug(f"Note: Total findings ({len(self.findings)}) != Displayed Sum ({total_count}).")
         
         # AJAX & Dynamic Stats (Literal Counts)
@@ -212,12 +237,15 @@ class Reporter:
 
         # Table Data
         data = [
-            ("Inline JavaScript", inline_js, "Code inside <script> tags within HTML/ASPX files"),
-            ("Internal JavaScript", internal_js, "Standalone local .js files"),
-            ("Inline CSS", inline_css, "Code inside <style> tags within HTML/ASPX files"),
-            ("Internal CSS", internal_css, "Standalone local .css files"),
-            ("External Resources", ext_count, "References to remote scripts/styles (src=http...)"),
-            ("Total Issues", total_count, "Sum of the above 5 categories"),
+            ("Inline JS (Attributes)", inline_js_attr, "Direct attributes: onclick, onload, href='javascript:...'"),
+            ("Internal JS (Blocks)", internal_js_blocks, "Embedded blocks: <script>...</script>"),
+            ("External JS (Files)", external_js_combined, "References: <script src='...'> (Local & Remote)"),
+            ("", "", ""),
+            ("Inline CSS (Attributes)", inline_css_attr, "Direct attributes: style='...'"),
+            ("Internal CSS (Blocks)", internal_css_blocks, "Embedded blocks: <style>...</style>"),
+            ("External CSS (Files)", external_css_combined, "References: <link rel='stylesheet'> (Local & Remote)"),
+            ("", "", ""),
+            ("Total Issues", total_count, "Sum of all findings"),
             ("", "", ""),  # Spacer
             ("Total AJAX Calls Found", ajax_count, "Regex match for $.ajax, fetch, xhr, axios, etc."),
             ("  - Inline AJAX", inline_ajax, "AJAX patterns found inside <script> blocks"),
@@ -243,62 +271,137 @@ class Reporter:
         ws.column_dimensions['C'].width = 60
         ws.column_dimensions['C'].width = 60
 
-    def _create_js_sheet(self):
-        # Columns: File Path, File Name, Extracted File, Type, Start Line, End Line, Code Snippet, AJAX Detected, Dynamic Code?, Full Code
-        headers = ["File Path", "File Name", "Extracted File", "Type", "Start Line", "End Line", "Code Snippet", "AJAX Detected", "Dynamic Code?", "Full Code"]
+    # --- JS Sheets ---
+    def _create_inline_js_sheet(self):
+        """1. Inline JS: Attributes (onclick, etc.)"""
+        headers = ["File Path", "File Name", "Context", "Line", "Code Snippet", "Full Code"]
         data = []
+        # Filter: JS + Inline Source + NOT Script Block
+        findings = [f for f in self.findings if f.category == 'JS' and f.source_type == 'INLINE' and f.code_type != 'scriptblock']
         
-        js_findings = [f for f in self.findings if f.category == 'JS']
-        for i, f in enumerate(js_findings, 1):
+        for f in findings:
             data.append([
-                f.file_path,  # Full absolute path (Col 1)
-                os.path.basename(f.file_path), # Just filename (Col 2)
-                f.bundled_file,
+                f.file_path,
+                os.path.basename(f.file_path),
                 f.code_type,
                 f.start_line,
-                f.end_line,
                 f.snippet,
+                f.full_code
+            ])
+        self._create_sheet("Inline JS (Attributes)", headers, data)
+
+    def _create_internal_js_sheet(self):
+        """2. Internal JS: Script Blocks"""
+        headers = ["File Path", "File Name", "Extracted File", "Line", "Length (Lines)", "AJAX?", "Code Snippet", "Full Code"]
+        data = []
+        # Filter: JS + Inline Source + IS Script Block
+        findings = [f for f in self.findings if f.category == 'JS' and f.source_type == 'INLINE' and f.code_type == 'scriptblock']
+        
+        for f in findings:
+            data.append([
+                f.file_path,
+                os.path.basename(f.file_path),
+                f.bundled_file,
+                f.start_line,
+                (f.end_line - f.start_line),
                 "Yes" if f.ajax_detected else "No",
-                "Yes" if getattr(f, 'dynamic_code_detected', False) else "No",
+                f.snippet,
                 f.full_code
             ])
-        self._create_sheet("Inline JavaScript", headers, data)
+        self._create_sheet("Internal JS (Blocks)", headers, data)
 
-    def _create_css_sheet(self):
-        # Columns: File Path, File Name, Extracted File, Type, Start Line, End Line, Code Snippet, Full Code
-        headers = ["File Path", "File Name", "Extracted File", "Type", "Start Line", "End Line", "Code Snippet", "Full Code"]
+    def _create_external_js_sheet(self):
+        """3. External JS: Local Files & Remote References"""
+        headers = ["File Path", "File Name", "Reference Type", "Source/URL", "Line", "Is Remote?"]
         data = []
         
-        css_findings = [f for f in self.findings if f.category == 'CSS']
-        for i, f in enumerate(css_findings, 1):
+        # Filter: 
+        # a) Category=JS + Source=LOCAL (Standalone .js file)
+        # b) Category=Internal (Local <script src>)
+        # c) Category=External (Remote <script src>)
+        # AND 'script' keyword check for Internal/External to filter out CSS
+        
+        findings = [f for f in self.findings if 
+                    (f.category == 'JS' and f.source_type == 'LOCAL') or 
+                    ((f.category == 'Internal' or f.category == 'External') and 'script' in f.code_type.lower())]
+
+        for f in findings:
+            # For standalone files, the "Source" is the file itself. For references, it's the src attribute.
+            src_url = f.snippet if f.category in ['Internal', 'External'] else "Self"
+            is_remote = "Yes" if f.source_type == 'REMOTE' else "No"
+            
+            data.append([
+                f.file_path,
+                os.path.basename(f.file_path),
+                f.code_type,
+                src_url,
+                f.start_line,
+                is_remote
+            ])
+        self._create_sheet("External JS (Files)", headers, data)
+
+    # --- CSS Sheets ---
+    def _create_inline_css_sheet(self):
+        """1. Inline CSS: Attributes (style=...)"""
+        headers = ["File Path", "File Name", "Attribute", "Line", "Code Snippet"]
+        data = []
+        # Filter: CSS + Inline Source + NOT Style Block
+        findings = [f for f in self.findings if f.category == 'CSS' and f.source_type == 'INLINE' and 'styleblock' not in f.code_type]
+        
+        for f in findings:
+            data.append([
+                f.file_path,
+                os.path.basename(f.file_path),
+                f.code_type,
+                f.start_line,
+                f.snippet
+            ])
+        self._create_sheet("Inline CSS (Attributes)", headers, data)
+
+    def _create_internal_css_sheet(self):
+        """2. Internal CSS: Style Blocks"""
+        headers = ["File Path", "File Name", "Extracted File", "Line", "Code Snippet", "Full Code"]
+        data = []
+        # Filter: CSS + Inline Source + IS Style Block
+        findings = [f for f in self.findings if f.category == 'CSS' and f.source_type == 'INLINE' and 'styleblock' in f.code_type]
+        
+        for f in findings:
             data.append([
                 f.file_path,
                 os.path.basename(f.file_path),
                 f.bundled_file,
-                f.code_type,
                 f.start_line,
-                f.end_line,
                 f.snippet,
                 f.full_code
             ])
-        self._create_sheet("Inline CSS", headers, data)
+        self._create_sheet("Internal CSS (Blocks)", headers, data)
 
-    def _create_external_sheet(self):
-        # Columns: File Path, File Name, Type, Resource Path, Start Line, End Line
-        headers = ["File Path", "File Name", "Type", "Resource Path", "Start Line", "End Line"]
+    def _create_external_css_sheet(self):
+        """3. External CSS: Local Files & Remote References"""
+        headers = ["File Path", "File Name", "Reference Type", "Source/URL", "Line", "Is Remote?"]
         data = []
         
-        ext_findings = [f for f in self.findings if f.category == 'External']
-        for i, f in enumerate(ext_findings, 1):
+        # Filter: 
+        # a) Category=CSS + Source=LOCAL (Standalone .css file)
+        # b) Category=Internal/External + 'style'/'css' in type
+        
+        findings = [f for f in self.findings if 
+                    (f.category == 'CSS' and f.source_type == 'LOCAL') or 
+                    ((f.category == 'Internal' or f.category == 'External') and ('style' in f.code_type.lower() or 'css' in f.code_type.lower()))]
+
+        for f in findings:
+            src_url = f.snippet if f.category in ['Internal', 'External'] else "Self"
+            is_remote = "Yes" if f.source_type == 'REMOTE' else "No"
+            
             data.append([
                 f.file_path,
                 os.path.basename(f.file_path),
                 f.code_type,
-                f.snippet, # snippet holds the URL for external
+                src_url,
                 f.start_line,
-                f.end_line
+                is_remote
             ])
-        self._create_sheet("External Resources", headers, data)
+        self._create_sheet("External CSS (Files)", headers, data)
 
     def _create_sheet(self, title: str, headers: List[str], data_rows: List[List[str]]):
         ws = self.wb.create_sheet(title)
