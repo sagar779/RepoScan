@@ -249,7 +249,7 @@ class Reporter:
             ("", "", ""),  # Spacer
             ("Total AJAX Calls Found", ajax_count, "Regex match for $.ajax, fetch, xhr, axios, etc."),
             ("  - Inline AJAX", inline_ajax, "AJAX patterns found inside <script> blocks"),
-            ("  - External AJAX", external_ajax, "AJAX patterns found inside local .js files"),
+            ("  - AJAX in Local Files", external_ajax, "AJAX patterns found inside the 'External JS' files"),
             ("  - With Server Dependencies", server_deps, "AJAX containing @Model, @ViewBag, or ASP tags"),
             ("  - Clean/Extractable", clean_ajax, "AJAX with no server-side dependency markers"),
             ("", "", ""),
@@ -312,7 +312,8 @@ class Reporter:
 
     def _create_external_js_sheet(self):
         """3. External JS: Local Files & Remote References"""
-        headers = ["File Path", "File Name", "Reference Type", "Source/URL", "Line", "Is Remote?"]
+        # Added "Contains AJAX?" column
+        headers = ["File Path", "File Name", "Reference Type", "Source/URL", "Contains AJAX?", "Line", "Is Remote?"]
         data = []
         
         # Filter: 
@@ -330,11 +331,17 @@ class Reporter:
             src_url = f.snippet if f.category in ['Internal', 'External'] else "Self"
             is_remote = "Yes" if f.source_type == 'REMOTE' else "No"
             
+            # AJAX Status logic
+            ajax_status = "N/A (Reference)"
+            if f.category == 'JS' and f.source_type == 'LOCAL':
+                 ajax_status = "Yes" if f.ajax_detected else "No"
+            
             data.append([
                 f.file_path,
                 os.path.basename(f.file_path),
                 f.code_type,
                 src_url,
+                ajax_status,
                 f.start_line,
                 is_remote
             ])
