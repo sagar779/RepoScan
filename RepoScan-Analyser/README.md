@@ -43,10 +43,19 @@ python main.py --root "C:\Path\To\LegacyApp" --all
 ```
 
 ## Output Artifacts
-Check the `output/` folder for 4 separate trackers:
-1.  `Code_Inventory.xlsx`: Summary, Inline JS/CSS inventory, and External resources.
-2.  `AJAX_Assessment.xlsx`: Dedicated analysis of all AJAX calls and logic.
-3.  `Refactoring_Tracker.xlsx`: The Developer Checklist with Traffic Light status.
-4.  `Crawler_Input.xlsx`: Generated input list for Dynamic Analysis.
-5.  `extracted_code/`: Clean `.js` and `.css` files (only if extraction ran).
+Check the `output/` folder for 3 separate trackers:
+1.  **`Code_Inventory.xlsx`** (Master Inventory):
+    *   **Summary**: Metrics & Volumetrics.
+    *   **Inventories**: Lists of all JS, CSS, and External Resources.
+    *   **AJAX Code**: Dedicated tab for all API/AJAX calls logic.
+    *   **Legend**: Explains metrics like "Dynamic Code" and "Total Issues".
+2.  **`Refactoring_Tracker.xlsx`**:
+    *   **JS Refactoring**: Traffic Light status for Scripts.
+    *   **CSS Refactoring**: Traffic Light status for Styles.
+3.  **`Crawler_Input.xlsx`**: Input list for Dynamic Security Scanners (ZAP/Burp).
+4.  **`extracted_code/`**:
+    *   `inline_js/`: Code extracted from `<script>` tags.
+    *   `internal_js/`: Local `.js` files.
+    *   `inline_css/`: Code extracted from `<style>` tags.
+    *   `internal_css/`: Local `.css` files.
 

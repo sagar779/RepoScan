@@ -14,12 +14,18 @@ class Reporter:
         self.wb = openpyxl.Workbook()
 
     def bundle_code(self):
-        """Extracts inline code to separate files."""
+        """Extracts inline code to separate files with granular organization."""
         base_dir = os.path.join(self.config.output_folder, "extracted_code")
-        js_dir = os.path.join(base_dir, "inline_javascript")
-        css_dir = os.path.join(base_dir, "inline_css")
         
-        for d in [js_dir, css_dir]:
+        # Granular Folders
+        folders = {
+            "inline_js": os.path.join(base_dir, "inline_js"),
+            "internal_js": os.path.join(base_dir, "internal_js"),
+            "inline_css": os.path.join(base_dir, "inline_css"),
+            "internal_css": os.path.join(base_dir, "internal_css")
+        }
+        
+        for d in folders.values():
             if not os.path.exists(d):
                 os.makedirs(d)
                 
@@ -27,30 +33,35 @@ class Reporter:
             if not f.full_code:
                 continue
                 
-            # Determine extension and dir
+            # Determine target folder and extension
+            target_folder = ""
+            ext = ""
+            
             if f.category == 'JS':
                 ext = ".js"
-                target_dir = js_dir
+                if f.source_type == 'LOCAL': target_folder = folders["internal_js"]
+                else: target_folder = folders["inline_js"] # Inline & Remote-but-inline-context
             elif f.category == 'CSS':
                 ext = ".css"
-                target_dir = css_dir
+                if f.source_type == 'LOCAL': target_folder = folders["internal_css"]
+                else: target_folder = folders["inline_css"]
             else:
-                continue # External resources or others don't need bundling
-                
-            # Sanitize path
+                continue 
+
+            # Filename Convention: Full Path Structure to avoid collisions
+            # Format: {Path_Structure}_{Type}_L{Line}.ext
+            # e.g. Views_Home_Index_cshtml_scriptblock_L45.js
+            
             rel_path = self._get_relative_path(f.file_path)
-            sanitized_path = rel_path.replace(os.sep, "_").replace("/", "_").replace("\\", "_")
+            # Sanitize path: Replace separators and dots (except strict extension if needed)
+            safe_path = rel_path.replace(":", "").replace(os.sep, "_").replace("/", "_").replace("\\", "_").replace(".", "_")
             
-            # Sanitize type (should be clean from parser, but safety first)
-            safer_type = "".join([c if c.isalnum() else "_" for c in f.code_type])
-            
-            # Naming convention: <dir>_<file>_<context>_line<start>-<end>.<ext>
-            # Example: login_index_scriptblock_line45-78.js
-            filename = f"{sanitized_path}_{safer_type}_line{f.start_line}-{f.end_line}{ext}"
+            safe_type = "".join([c if c.isalnum() else "_" for c in f.code_type])
+            filename = f"{safe_path}_{safe_type}_L{f.start_line}{ext}"
             
             # Write file
             try:
-                full_path = os.path.join(target_dir, filename)
+                full_path = os.path.join(target_folder, filename)
                 with open(full_path, "w", encoding="utf-8") as out:
                     out.write(f.full_code)
                 f.bundled_file = filename
@@ -61,45 +72,39 @@ class Reporter:
         # Bundle code first
         self.bundle_code()
         
-        # 1. Code Inventory Tracker (Original Analysis)
+        # 1. Code Inventory Tracker (Now includes AJAX)
         self._create_inventory_tracker()
         
-        # 2. AJAX Assessment Tracker
-        self._create_ajax_tracker()
+        # 2. Refactoring & Extraction Tracker (Split Tabs)
+        self._create_refactoring_tracker()
         
         # 3. Crawler Input Tracker
         self._create_crawler_tracker()
-        
-        # 4. Refactoring & Extraction Tracker
-        self._create_refactoring_tracker()
 
     def _create_inventory_tracker(self):
         wb = openpyxl.Workbook()
         ws = wb.active
         wb.remove(ws)
         
-        # Helper to attach methods to this temporary WB context 
-        # (Refactoring this class fully would be better, but keeping changes minimal)
         self.wb = wb 
         self._create_summary_sheet()
         self._create_js_sheet()
         self._create_css_sheet()
+        self._create_ajax_sheet() # Merged back
         self._create_external_sheet()
+        self._create_legend_sheet() # New Legend
         
         self._save_wb(wb, "Code_Inventory.xlsx")
 
-    def _create_ajax_tracker(self):
-        wb = openpyxl.Workbook()
-        self.wb = wb
-        wb.remove(wb.active)
-        self._create_ajax_sheet()
-        self._save_wb(wb, "AJAX_Assessment.xlsx")
+    # Removed _create_ajax_tracker as it is merged
 
     def _create_refactoring_tracker(self):
         wb = openpyxl.Workbook()
         self.wb = wb
         wb.remove(wb.active)
-        self._create_refactoring_sheet()
+        # Split into JS and CSS
+        self._create_refactoring_sheet("JS")
+        self._create_refactoring_sheet("CSS")
         self._save_wb(wb, "Refactoring_Tracker.xlsx")
 
     def _create_crawler_tracker(self):
@@ -406,8 +411,12 @@ class Reporter:
                     server_cell.fill = PatternFill("solid", fgColor="C6EFCE")  # Green
                     server_cell.font = Font(color="006100")
 
-    def _create_refactoring_sheet(self):
-        """Generates Tab 4: Refactoring & Extraction Tracker (Developer Checklist)."""
+    def _create_refactoring_sheet(self, category_filter: str = None):
+        """Generates Tab 4: Refactoring & Extraction Tracker (Developer Checklist).
+           category_filter: 'JS' or 'CSS'
+        """
+        sheet_title = f"{category_filter} Refactoring" if category_filter else "Refactoring Tracker"
+        
         headers = [
             "Ref ID", "Location", "Code Type", "Functionality", "Complexity", 
             "Extraction Status", "Target Filename", "Recommended Method", "Dev Notes"
@@ -416,9 +425,13 @@ class Reporter:
         
         row_num = 1
         for f in self.findings:
-            if f.category not in ['JS', 'CSS']:
-                continue
-                
+            # Filter Logic
+            if category_filter:
+                if f.category != category_filter:
+                    continue
+            elif f.category not in ['JS', 'CSS']:
+                 continue
+                 
             # Traffic Light Logic based on Severity and Complexity
             status = "🟢 Ready"
             method = "Move to separate file"
@@ -446,6 +459,7 @@ class Reporter:
             # Ref ID
             ref_id = f"{f.category}-{row_num:04d}"
             
+            
             data.append([
                 ref_id,
                 f"{os.path.basename(f.file_path)} : L{f.start_line}",
@@ -459,11 +473,11 @@ class Reporter:
             ])
             row_num += 1
             
-        self._create_sheet("Refactoring Tracker", headers, data)
+        self._create_sheet(sheet_title, headers, data)
         
         # Color coding for Status
-        if "Refactoring Tracker" in self.wb.sheetnames:
-            ws = self.wb["Refactoring Tracker"]
+        if sheet_title in self.wb.sheetnames:
+            ws = self.wb[sheet_title]
             for row in range(2, ws.max_row + 1):
                 status_cell = ws.cell(row=row, column=6)
                 val = status_cell.value
@@ -476,3 +490,33 @@ class Reporter:
                 elif "Ready" in val:
                     status_cell.fill = PatternFill("solid", fgColor="C6EFCE") # Green
                     status_cell.font = Font(color="006100")
+
+    def _create_legend_sheet(self):
+        """Creates a Legend tab explaining the metrics."""
+        ws = self.wb.create_sheet("Legend")
+        
+        headers = ["Term/Metric", "Definition", "Implication"]
+        data = [
+            ("Total Issues", "Sum of all Inline JS + Inline CSS + External Resource tags found.", "Indicates the total volume of work. High numbers = Heavy refactoring load."),
+            ("Dynamic Code", "Presence of runtime code generation (eval, innerHTML, document.write).", "SECURITY RISK. Hard to measure complexity statically. Requires manual audit."),
+            ("AJAX Calls", "Detected Asynchronous JavaScript patterns (local or remote).", "Indicates data flow. High count = Heavy API dependency."),
+            ("Logic Density", "Score based on loops, conditionals, and logic structure.", "Low (<2) = Glue Code (keep inline?), High (>5) = Business Logic (Must Extract)."),
+            ("Server Severity", "Presence of @Model, @ViewBag (Razor) or <% (ASP).", "High = Cannot move to .js file without rewriting logic to API/JSON."),
+        ]
+        
+        # Header Style
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=col)
+            cell.value = h
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="000000")
+            
+        # Data
+        for row_idx, row_data in enumerate(data, 2):
+            for col_idx, val in enumerate(row_data, 1):
+                ws.cell(row=row_idx, column=col_idx, value=val)
+                
+        # Widths
+        ws.column_dimensions['A'].width = 20
+        ws.column_dimensions['B'].width = 60
+        ws.column_dimensions['C'].width = 60
