@@ -35,8 +35,13 @@ def get_refactorability(filename, content):
         (r'@Model', 'Razor Model syntax detected'),
         (r'@ViewBag', 'Razor ViewBag syntax detected'),
         (r'@ViewData', 'Razor ViewData syntax detected'),
+        (r'@Url\.Action', 'Razor Url.Action detected'),
+        (r'@Url\.Content', 'Razor Url.Content detected'),
+        (r'<%\s', 'Classic ASP block detected'),
+        (r'<%:', 'ASP.NET Output detected'),
         (r'\{\{', 'Potential Template Syntax ({{) detected'),
-        (r'\bResponse\.Write\b', 'Server-side Response.Write detected')
+        (r'\bResponse\.Write\b', 'Server-side Response.Write detected'),
+        (r'\bRequest\.Form\b', 'Server-side Request.Form detected')
     ]
     
     for pattern, reason in server_patterns:

@@ -6,11 +6,8 @@ from datetime import datetime
 from src.scanner import Scanner
 from src.reporter import Reporter
 
-def print_banner():
-    """Display professional branded banner"""
-    width = 80
-def print_banner():
-    """Display professional branded banner"""
+def get_banner():
+    """Generate professional branded banner string"""
     width = 80
     # ASCII Art for "RepoScan"
     ascii_art = r"""
@@ -21,19 +18,20 @@ def print_banner():
 |_| \_\___| .__/ \___/|____/ \___\__,_|_| |_|
           |_|                                
 """
-    print("=" * width)
+    banner = ["=" * width]
     for line in ascii_art.splitlines():
         if line.strip():
-            print(line.center(width))
+            banner.append(line.center(width))
     
-    print("Software Depth Analysis & Reporting Utility".center(width))
-    print()
-    print("RepoScan v1.0. Property owned by Castellum Labs.".center(width))
-    print("Authors: Gopikrishna Manikyala, Sushanth Pasham, Brijith K Biju".center(width))
-    print("=" * width)
+    banner.append("Software Depth Analysis & Reporting Utility".center(width))
+    banner.append("")
+    banner.append("RepoScan v1.0. Property owned by Castellum Labs.".center(width))
+    banner.append("Authors: Gopikrishna Manikyala, Sushanth Pasham, Brijith K Biju".center(width))
+    banner.append("=" * width)
+    return "\n".join(banner)
 
-def print_footer(summary_stats, output_file):
-    """Display completion footer with summary and save to text file"""
+def print_footer(summary_stats, output_file, header_info=""):
+    """Display completion footer with summary and save full execution log to text file"""
     
     summary_text = f"""
 {'=' * 66}
@@ -63,20 +61,23 @@ Analysis complete. Report ready for review.
 """
     print(summary_text)
     
-    # Save to file
+    # Save to file (Banner + Start Info + Summary)
     try:
+        full_log = (header_info + "\n" + summary_text) if header_info else summary_text
         output_dir = os.path.dirname(output_file)
         summary_path = os.path.join(output_dir, "scan_summary.txt")
         with open(summary_path, "w", encoding='utf-8') as f:
-            f.write(summary_text)
+            f.write(full_log)
     except Exception as e:
         print(f"Warning: Could not save summary text file: {e}")
 
 def main():
+    start_time_obj = datetime.now()
     start_time = time.time()
     
     # Display banner
-    print_banner()
+    banner = get_banner()
+    print(banner)
     
     # Check if arguments provided
     if len(sys.argv) > 1:
@@ -94,8 +95,8 @@ def main():
         output_path = input("> ").strip()
         if not output_path:
             output_path = 'output'
-
     
+    # Clean paths
     target_path = os.path.abspath(target_path)
     output_path = os.path.abspath(output_path)
     
@@ -111,13 +112,16 @@ def main():
         verbose_input = input("(y/n) [default: n]: ").strip().lower()
         verbose = verbose_input in ['y', 'yes']
     
-    print(f"\nStarting scan...")
-    print(f"  Target: {target_path}")
-    print(f"  Output: {output_path}")
-    print(f"  Time:   {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    if verbose:
-        print(f"  Mode:   Verbose (detailed progress)")
-    print("\n" + "=" * 66)
+    # Prepare Start Info
+    start_info = f"""
+Starting scan...
+  Target: {target_path}
+  Output: {output_path}
+  Time:   {start_time_obj.strftime('%Y-%m-%d %H:%M:%S')}
+  Mode:   {'Verbose (detailed progress)' if verbose else 'Standard (summary only)'}
+"""
+    print(start_info)
+    print("=" * 66)
     
     # Initialize components
     scanner = Scanner(target_path)
@@ -169,10 +173,9 @@ def main():
     print(f"  Completed in {elapsed_time:.2f} seconds")
     
     if report_file:
-        print_footer(summary_stats, report_file)
+        header_for_log = banner + "\n" + start_info
+        print_footer(summary_stats, report_file, header_info=header_for_log)
         if len(sys.argv) <= 1: input("Press Enter to exit...")
 
 if __name__ == "__main__":
     main()
-
-
