@@ -48,7 +48,20 @@ graph TD
 ```
 
 ### Component Architecture & Tech Stack
-The system is built using **Python 3.9+** and leverages the following modules and libraries:
+The system is built using **Python 3.9+** and leverages a modular architecture employing specific design patterns to ensure scalability and maintainability.
+
+#### Technology Stack
+*   **Core Language**: Python 3.9+
+*   **Static Analysis**: `re` (Advanced Regex with lookaheads/lookbehinds), `glob` (File traversal), `ast` (Abstract Syntax Tree parsing for Python/complex logic).
+*   **Dynamic Analysis (Crawler)**: `requests` (Simulated User-Agent & Session handling), `BeautifulSoup4` (DOM Parsing & Tag Extraction), `urllib` (URL normalization).
+*   **Reporting**: `openpyxl` (Native Excel generation), `pandas` (Data aggregation and pivot tables).
+*   **Configuration**: `configparser` (INI based config).
+
+#### Design Patterns Implemented
+1.  **Facade Pattern** (`MainController`): Provides a single simplified interface to the complex subsystems (Scanner, Crawler, Reporter).
+2.  **Strategy Pattern** (`ScannerModule`): Dynamically selects the appropriate parsing strategy based on file extension (`.cs` vs `.js` vs `.cshtml`).
+3.  **Observer Pattern** (`Logger`): Centralized logging system that subscribes to events across all modules for unified debugging.
+4.  **Factory Pattern**: Used in the Reporter module to generate different types of report tabs (Inventory vs. Analysis) based on the data context.
 
 ```mermaid
 classDiagram
@@ -60,6 +73,7 @@ classDiagram
     class ScannerModule {
         +Lib: glob, os
         +scan_directory()
+        +Logic: Regex Pattern Matching
     }
     
     class ParserCore {
@@ -79,12 +93,14 @@ classDiagram
         +Lib: urllib
         +fetch_assets()
         +validate_csp()
+        +find_dynamic_assets()
     }
     
     class ReporterModule {
         +Lib: openpyxl (Excel)
         +Lib: pandas (optional)
         +generate_tracker()
+        +refactor_excel_structure()
     }
 
     class RefactorEngine {
@@ -99,6 +115,36 @@ classDiagram
     MainController --> ReporterModule
     MainController --> RefactorEngine
 ```
+
+## 1.1 Module Detailed Specifications
+
+### A. Static Scanner Module
+The Scanner is the foundation of the analysis, designed to parse the codebase at rest.
+*   **Methodology**: It performs a recursive walk through the directory tree, applying file-type-specific regex filters.
+*   **Key Capability**:
+    *   **Inline Pattern Detection**: Identifies hardcoded JS/CSS within HTML/Razor files.
+    *   **Server Dependency Analysis**: specific detection of Razor (`@Model`, `@ViewBag`) and WebForms (`runat="server"`) constructs.
+*   **Calculation Logic**:
+    *   **Complexity Weighting**: Assigns a "Migration Difficulty" score based on the count of server-side tags vs. client-side logic.
+    *   **Noise Filtering**: Uses an exclusion list (defined in `config.ini`) to ignore vendor libraries (jQuery, Bootstrap) and binary files.
+
+### B. Dynamic Crawler Module
+The Crawler operates on the running application (or simulated local server) to bridge the gap between static code and runtime behavior.
+*   **Methodology**: Uses a `requests.Session` object to maintain state (cookies/headers) and traverses the application like a user.
+*   **Advanced Feature: Dynamic AJAX & Asset Discovery**:
+    *   **Logic**: The crawler intercepts and analyzes `XHR` (AJAX) calls and dynamic script injections.
+    *   **Pattern**: It parses HTTP responses to find **Dynamically Loaded JavaScript and CSS** that are not present in the static HTML source (e.g., scripts loaded via `$.getScript()` or lazy-loaded CSS bundles).
+    *   **Output**: These dynamically discovered assets are flagged as "Runtime Only" in the final report, effectively highlighting "Hidden Dependencies".
+
+### C. Refactoring & Excel Reporting Module
+This module is responsible for synthesizing the raw data into actionable intelligence.
+*   **Excel Refactoring**: The output engine has been refactored to separate concerns:
+    *   **Inventory Tabs**: Raw data (Files, Lines of Code).
+    *   **Dashboard Tabs**: High-level metrics for management.
+    *   **Action Tabs**: Developer-focused checklists (e.g., "Files to Refactor").
+*   **Logic**:
+    *   **Deduplication**: Ensures that assets found by both Scanner and Crawler are merged into a single "Confidence Source" entry.
+    *   **Descriptive Grouping**: Groups findings by "Module" or "Feature Area" based on folder structure, aiding module-wise migration planning.
 
 ---
 

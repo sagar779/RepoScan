@@ -11,6 +11,8 @@ from src.parser import Parser
 from src.reporter import Reporter
 from src.reporter import Reporter
 from src.logger import setup_logger
+from src.crawler.crawler import Crawler
+from src.crawler.tracker import CorrelationTracker
 try:
     from refactoring_utility.check import generate_report
 except ImportError:
@@ -78,11 +80,15 @@ def main():
         run_extraction(config)
     elif config.mode == "dynamic":
         print(f"\n[Mode: Dynamic] - Running Crawler Only")
-        # run_crawler(config) - Pending implementation
+        run_dynamic_scan(config)
     elif config.mode == "all":
-        print("\n[Mode: ALL] - Running Static Scan + Extraction")
+        print("\n[Mode: ALL] - Running Static Scan + Dynamic Analysis")
         run_static_scan(config)
-        run_extraction(config)
+        # Note: Static scan must complete first to populate findings for correlation, 
+        # but current run_static_scan doesn't return findings. 
+        # For now, we run them independently or chained if we refactor return types.
+        # Assuming run_dynamic_scan handles missing static data gracefully (as 'New' findings).
+        run_dynamic_scan(config)
     
     print("\nDone.")
 
@@ -155,6 +161,57 @@ def run_extraction(config):
     # In future step: Load Excel, check status, extract only 'Ready' items.
     # reporter.bundle_specific_items(...)
     pass
+
+def run_dynamic_scan(config):
+    # 5. Dynamic Analysis
+    print("\n[Phase: Dynamic Analysis]")
+    
+    if not config.target_url:
+        print("Error: --url parameter is required for Dynamic Analysis.")
+        return
+
+    print(f"Target URL: {config.target_url}")
+    print("Starting Crawler...")
+    
+    try:
+        crawler = Crawler(config.target_url)
+        crawler.crawl()
+        
+        assets = crawler.get_assets()
+        external = crawler.get_external_assets()
+        
+        print(f"\nCrawl Complete.")
+        print(f"- Internal Assets Found: {len(assets)}")
+        print(f"- External Resources: {len(external)}")
+        
+        # Generate Correlation Report
+        # Since we are not passing static findings here (architecture limitation), 
+        # we treat all dynamic findings as "New/Web Only" or just list them.
+        # Ideally, we would load 'Code_Inventory.xlsx' to correlate.
+        
+        print("Generating Correlation Report...")
+        tracker = CorrelationTracker()
+        output_file = os.path.join(config.output_folder, "Correlation_Report.xlsx")
+        
+        # Matches = [] (No static correlation yet in this mode)
+        # New Findings = Assets found
+        # Missing = []
+        
+        # Convert assets to dict format expected by tracker
+        new_findings = []
+        for url, asset_type in assets:
+            new_findings.append({
+                'endpoint_url': url,
+                'ajax_type': asset_type,
+                'dynamic_url': url,
+                'snippet': f"Discovered via Crawl: {url}"
+            })
+            
+        tracker.generate_report(matches=[], new_findings=new_findings, missing_findings=[], external_assets=external, output_path=output_file)
+        
+    except Exception as e:
+        logging.error(f"Dynamic Analysis failed: {e}")
+        print(f"Dynamic Analysis failed. Check logs.")
 
 if __name__ == "__main__":
     main()
