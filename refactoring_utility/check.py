@@ -132,7 +132,7 @@ def generate_report(extracted_path, output_path):
     # JavaScript Sheet
     ws_js = wb.active
     ws_js.title = "JavaScript Assessment"
-    js_path = os.path.join(extracted_path, "inline_javascript")
+    js_path = os.path.join(extracted_path, "inline_js")
     analyze_folder(js_path, ws_js, "JS")
     
     # CSS Sheet

@@ -445,6 +445,9 @@ class Reporter:
             for col_num, cell_value in enumerate(row_data, 1):
                 cell = ws.cell(row=row_num, column=col_num)
                 val_str = str(cell_value)
+                # Remove Excel-illegal characters (XML invalid chars)
+                val_str = "".join(c for c in val_str if (0x20 <= ord(c) <= 0xD7FF) or (0xE000 <= ord(c) <= 0xFFFD) or (0x10000 <= ord(c) <= 0x10FFFF) or c in ('\t', '\n', '\r'))
+                
                 # Excel cell limit is 32767 chars
                 if len(val_str) > 32000:
                     val_str = val_str[:32000] + "..."

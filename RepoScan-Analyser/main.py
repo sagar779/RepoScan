@@ -14,6 +14,9 @@ from src.logger import setup_logger
 from src.crawler.crawler import Crawler
 from src.crawler.tracker import CorrelationTracker
 from src.crawler.comparer import Comparer
+# Add parent directory to path to allow importing refactoring_utility
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 try:
     from refactoring_utility.check import generate_report
 except ImportError:
@@ -150,6 +153,22 @@ def run_static_scan(config):
             print("- Code_Inventory.xlsx")
             print("- Refactoring_Tracker.xlsx")
             print("- Crawler_Input.xlsx")
+
+            # 4.1 Refactoring Assessment (Check Utility)
+            if generate_report:
+                try:
+                    print("\n[Phase 3a] Generating Refactoring Assessment...")
+                    extracted_dir = os.path.join(config.output_folder, "extracted_code")
+                    assessment_file = os.path.join(config.output_folder, "Refactoring_Assessment.xlsx")
+                    
+                    if os.path.exists(extracted_dir):
+                        generate_report(extracted_dir, assessment_file)
+                        print("- Refactoring_Assessment.xlsx")
+                    else:
+                        logging.warning("Extracted code directory not found. Skipping assessment.")
+                except Exception as e:
+                    logging.error(f"Failed to generate Refactoring Assessment: {e}")
+                    print(f"Warning: Assessment generation failed. See logs.")
 
         except Exception as e:
             logging.error(f"Failed to generate report: {e}")
