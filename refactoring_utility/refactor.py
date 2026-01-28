@@ -1,5 +1,6 @@
 import os
 import re
+import shutil
 import argparse
 import shutil
 
@@ -11,9 +12,7 @@ def parse_extracted_filename(filename):
     """
     try:
         # Regex to find the _lineX-Y part
-        # Updated to match user convention: _L{Start}-L{End}
-        # e.g. Views_Home_Index_cshtml_scriptblock_L10-L25.js
-        match = re.search(r'(.+)_([a-zA-Z0-9]+)_L(\d+)-L(\d+)\.(js|css)$', filename)
+        match = re.search(r'(.+)_([a-zA-Z0-9]+)_line(\d+)-(\d+)\.(js|css)$', filename)
         if not match:
             return None
             
@@ -98,112 +97,142 @@ def main():
     try:
         shutil.copytree(args.root, args.output)
     except Exception as e:
-        print(f"Failed to copy codebase: {e}")
+        print(f"Failed to read {file_path}: {e}")
         return
 
-    # 2. Gather Modifications
-    modifications = {} # { rel_file_path: [mods] }
-    
-    for root, _, files in os.walk(args.extracted):
-        for file in files:
-            meta = parse_extracted_filename(file)
-            if not meta:
-                continue
-                
-            orig_rel_path = find_original_file(args.output, meta['sanitized_path']) # Search in the COPY
-            if not orig_rel_path:
-                print(f"Warning: Could not find original file for {file}")
-                continue
-                
-            if orig_rel_path not in modifications:
-                modifications[orig_rel_path] = []
-            modifications[orig_rel_path].append(meta)
+    modified = False
+    file_rel_path = os.path.basename(file_path) # Simplified matching
 
-
-def is_safe_code(content):
-    """
-    Checks if code contains server-side logic that cannot be externalized.
-    """
-    server_patterns = [
-        r'<%', r'@Model', r'@ViewBag', r'@ViewData', r'\{\{', r'\bResponse\.Write\b'
-    ]
-    for pattern in server_patterns:
-        if re.search(pattern, content, re.IGNORECASE):
-            return False
-    return True
-
-    # 3. Process Files (The Copy)
-    for rel_path, mods in modifications.items():
-        # Sort desc by line number
-        mods.sort(key=lambda x: x['start_line'], reverse=True)
+    # --- 1. HANDLE INTERNAL SCRIPTS (BLOCKS) ---
+    # We iterate over the ACTUAL script tags in the file and try to process them
+    scripts = soup.find_all('script')
+    for script in scripts:
+        if script.get('src'): continue 
+        if not script.string: continue
         
-        full_src_path = os.path.join(args.output, rel_path) # MODIFY THE COPY
+        content = script.string
         
-        try:
-            with open(full_src_path, 'r', encoding='utf-8', errors='ignore') as f:
-                lines = f.readlines()
-        except Exception as e:
-            print(f"Failed to read {full_src_path}: {e}")
+        # Check if this block needs refactoring (State B/C)
+        has_razor = '@' in content
+        if not has_razor: continue # State A (Already handled by extractor, or ignored)
+
+        if re.search(r'(@if|@foreach|@for|@while)', content):
+            # State C: Add TODO
+            comment = soup.new_string(f" TODO: Manual Refactor Required (State C) ")
+            script.insert_before(comment)
             continue
             
-        # Apply edits
-        for mod in mods:
-            start_idx = mod['start_line'] - 1
-            end_idx = mod['end_line'] # inclusive in report, so slice should be end_idx
+        # State B: Apply Bridge
+        file_hash = generate_hash(content + file_path)
+        clean_js, bridge_config = create_bridge_config(content, file_hash)
+        
+        if bridge_config:
+            # Save External File
+            new_filename = f"{file_rel_path}_script_{file_hash}.js"
+            js_out_path = os.path.join(output_root, "js", "internal", new_filename)
+            os.makedirs(os.path.dirname(js_out_path), exist_ok=True)
             
-            # Check bounds
-            if start_idx < 0 or end_idx > len(lines):
-                print(f"  Line mismatch in {rel_path}. Skipping.")
-                continue
-
-            indent = ""
-            if lines[start_idx].strip():
-                indent = lines[start_idx].split(lines[start_idx].strip()[0])[0]
-
-            replacement = []
+            with open(js_out_path, 'w', encoding='utf-8') as f:
+                f.write(clean_js)
             
-            # READ EXTRACTED CONTENT FOR SAFETY CHECK
-            extracted_path = os.path.join(args.extracted, 'inline_javascript' if 'script' in mod['code_type'] or 'js' in mod['ext'] else 'inline_css', mod['extracted_file'])
-            is_safe = True
-            try:
-                if os.path.exists(extracted_path):
-                    with open(extracted_path, 'r', encoding='utf-8', errors='ignore') as ef:
-                        content = ef.read()
-                        if not is_safe_code(content):
-                            is_safe = False
-            except:
-                pass # If extraction failed, assume unsafe or handle gracefully
+            # Update HTML
+            # 1. Inject Config
+            config_script = soup.new_tag("script")
+            config_js = f"window.{BRIDGE_VAR_PREFIX}{file_hash} = {{\n"
+            for k, v in bridge_config.items():
+                config_js += f"    {k}: '{v}',\n" # Razor stays in quotes in the config
+            config_js += "};"
+            config_script.string = config_js
+            script.insert_before(config_script)
+            
+            # 2. Replace Block with Src
+            # FIX: Create new tag and replace_with
+            new_script = soup.new_tag("script", src=f"/js/internal/{new_filename}")
+            script.replace_with(new_script)
+            modified = True
+            print(f"[Fixed] Extracted Script Block in {file_rel_path}")
 
-            if mod['code_type'] == 'scriptblock':
-                if is_safe:
-                    src_ref = f"/js/{mod['extracted_file']}"
-                    replacement.append(f'{indent}<script src="{src_ref}"></script>\n')
-                    lines[start_idx:end_idx] = replacement
+    # --- 2. HANDLE INLINE HANDLERS (ATTRIBUTES) ---
+    # We look for standard event attributes
+    events = ['onclick', 'onload', 'onmouseover', 'onsubmit']
+    all_tags = soup.find_all(True)
+    
+    bottom_scripts = []
+    
+    for tag in all_tags:
+        for evt in events:
+            if tag.has_attr(evt):
+                inline_code = tag[evt]
+                # We classify this. If it has Razor, we skip (State C) or process.
+                # For v2.1, we treat all inline as candidates for extraction.
+                
+                # 1. Generate ID
+                if tag.has_attr('id'):
+                    elem_id = tag['id']
                 else:
-                    # BLOCKED: Insert Comment, Keep Code
-                    lines.insert(start_idx, f"{indent}<!-- TODO: Refactor Blocked Script [Server-Side Logic Detected] -->\n")
+                    elem_id = f"{ID_PREFIX}{generate_hash(inline_code)}"
+                    tag['id'] = elem_id
                 
-            elif mod['code_type'] == 'styleblock':
-                # CSS usually safe, but check anyway if needed. Assuming CSS safer for now or apply same logic.
-                href_ref = f"/css/{mod['extracted_file']}"
-                replacement.append(f'{indent}<link rel="stylesheet" href="{href_ref}" />\n')
-                lines[start_idx:end_idx] = replacement
+                # 2. Extract Code
+                new_filename = f"{file_rel_path}_{evt}_{generate_hash(inline_code)}.js"
+                js_out_path = os.path.join(output_root, "js", "inline", new_filename)
+                os.makedirs(os.path.dirname(js_out_path), exist_ok=True)
                 
-            elif mod['code_type'] == 'inlinestyle':
-                # Can't simple replace lines often line is shared
-                # Inserting comment above
-                 lines.insert(start_idx, f"{indent}<!-- TODO: Refactor inline style to {mod['extracted_file']} -->\n")
-                 
-            elif mod['code_type'] in ['onclick', 'onload', 'onmouseover', 'jsuri']:
-                 lines.insert(start_idx, f"{indent}<!-- TODO: Refactor {mod['code_type']} to {mod['extracted_file']} -->\n")
+                # Wrapper Logic
+                wrapper_js = f"""
+document.addEventListener('DOMContentLoaded', function() {{
+    var el = document.getElementById('{elem_id}');
+    if(el) {{
+        el.addEventListener('{evt[2:]}', function(event) {{
+            {inline_code}
+        }});
+    }}
+}});
+"""
+                with open(js_out_path, 'w', encoding='utf-8') as f:
+                    f.write(wrapper_js)
+                
+                # 3. Clean HTML
+                del tag[evt] # REMOVE the attribute
+                bottom_scripts.append(f"/js/inline/{new_filename}")
+                modified = True
+                print(f"[Fixed] Extracted Inline {evt} in {file_rel_path}")
 
-        # Write content back to the file (in place, since it's a copy)
-        with open(full_src_path, 'w', encoding='utf-8') as f:
-            f.writelines(lines)
+    # Inject Inline Script References at Body End
+    if bottom_scripts:
+        target = soup.body if soup.body else soup
+        for src in bottom_scripts:
+            s_tag = soup.new_tag("script", src=src)
+            target.append(s_tag)
+
+    if modified:
+        with open(file_path, 'w', encoding='utf-8') as f:
+            f.write(str(soup.prettify()))
+
+def main():
+    parser = argparse.ArgumentParser(description="Refactoring Engine v2.1 (Hotfix)")
+    parser.add_argument("--root", required=True, help="Root of original code")
+    parser.add_argument("--extracted", required=True, help="Extracted code directory")
+    parser.add_argument("--output", required=True, help="Destination")
+    
+    args = parser.parse_args()
+    
+    if os.path.exists(args.output):
+        try:
+            shutil.rmtree(args.output)
+        except:
+            pass # Handle permission errors gracefully
             
-        print(f"Modified: {full_src_path}")
+    shutil.copytree(args.root, args.output)
+    print(f"[Init] Copied codebase to {args.output}")
 
-    print("Refactoring complete. Full project available at:", args.output)
+    for root, dirs, files in os.walk(args.output):
+        for file in files:
+            if file.lower().endswith(('.cshtml', '.html', '.aspx')):
+                full_path = os.path.join(root, file)
+                process_file(full_path, args.extracted, args.output)
+    
+    print("\n[Done] Refactoring Complete.")
 
 if __name__ == "__main__":
     main()
