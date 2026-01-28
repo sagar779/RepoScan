@@ -13,6 +13,7 @@ from src.reporter import Reporter
 from src.logger import setup_logger
 from src.crawler.crawler import Crawler
 from src.crawler.tracker import CorrelationTracker
+from src.crawler.comparer import Comparer
 try:
     from refactoring_utility.check import generate_report
 except ImportError:
@@ -25,7 +26,9 @@ def cleanup_old_reports(output_folder: str):
         return
         
     pattern = os.path.join(output_folder, "Analysis.xlsx")
-    files = glob.glob(pattern)
+    # Also clean dynamic report
+    dynamic_pattern = os.path.join(output_folder, "Dynamic_Analysis_Report.xlsx")
+    files = glob.glob(pattern) + glob.glob(dynamic_pattern)
     if files:
         logging.info(f"Cleaning up old report(s) in {output_folder}...")
         for f in files:
@@ -185,29 +188,44 @@ def run_dynamic_scan(config):
         print(f"- External Resources: {len(external)}")
         
         # Generate Correlation Report
-        # Since we are not passing static findings here (architecture limitation), 
-        # we treat all dynamic findings as "New/Web Only" or just list them.
-        # Ideally, we would load 'Code_Inventory.xlsx' to correlate.
-        
-        print("Generating Correlation Report...")
+        print("Generating Dynamic Analysis Report (Correlation)...")
         tracker = CorrelationTracker()
-        output_file = os.path.join(config.output_folder, "Correlation_Report.xlsx")
+        output_file = os.path.join(config.output_folder, "Dynamic_Analysis_Report.xlsx")
         
-        # Matches = [] (No static correlation yet in this mode)
-        # New Findings = Assets found
-        # Missing = []
+        # 1. Load Static Findings (if available)
+        static_report = os.path.join(config.output_folder, "Code_Inventory.xlsx")
+        matches = []
+        new_findings_report = []
+        missing = []
         
-        # Convert assets to dict format expected by tracker
-        new_findings = []
-        for url, asset_type in assets:
-            new_findings.append({
-                'endpoint_url': url,
-                'ajax_type': asset_type,
-                'dynamic_url': url,
-                'snippet': f"Discovered via Crawl: {url}"
-            })
-            
-        tracker.generate_report(matches=[], new_findings=new_findings, missing_findings=[], external_assets=external, output_path=output_file)
+        # Prepare "Dynamic Findings" object list for Comparer
+        # We wrap the tuples (url, type) into objects
+        class DynamicFindingWrapper:
+            def __init__(self, url, type_):
+                self.file_path = url
+                self.snippet = f"Resource: {url}" # Simple snippet for now
+                self.ajax_pattern = type_
+                self.endpoint_url = url
+                
+        dynamic_objects = [DynamicFindingWrapper(url, t) for url, t in assets]
+
+        if os.path.exists(static_report):
+            print(f"Loading Static Report for Correlation: {static_report}")
+            comparer = Comparer(static_report)
+            matches, new_findings_report, missing = comparer.correlate(dynamic_objects)
+        else:
+            print("No Static Report found. Treating all crawler findings as NEW.")
+            # Convert to dictionary format expected by tracker for "New"
+            for d in dynamic_objects:
+                new_findings_report.append({
+                    'endpoint_url': d.endpoint_url,
+                    'ajax_type': d.ajax_pattern,
+                    'dynamic_url': d.file_path,
+                    'snippet': d.snippet,
+                    'status': 'NEW_WEB_ONLY'
+                })
+
+        tracker.generate_report(matches, new_findings_report, missing, external, output_file)
         
     except Exception as e:
         logging.error(f"Dynamic Analysis failed: {e}")

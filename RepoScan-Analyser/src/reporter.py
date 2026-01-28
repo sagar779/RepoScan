@@ -57,7 +57,8 @@ class Reporter:
             safe_path = rel_path.replace(":", "").replace(os.sep, "_").replace("/", "_").replace("\\", "_").replace(".", "_")
             
             safe_type = "".join([c if c.isalnum() else "_" for c in f.code_type])
-            filename = f"{safe_path}_{safe_type}_L{f.start_line}{ext}"
+            # {OriginalFilePath}_{BlockType}_L{StartLine}-L{EndLine}.{Extension}
+            filename = f"{safe_path}_{safe_type}_L{f.start_line}-L{f.end_line}{ext}"
             
             # Write file
             try:
@@ -110,6 +111,8 @@ class Reporter:
         wb = openpyxl.Workbook()
         self.wb = wb
         wb.remove(wb.active)
+        # Summary Tab
+        self._create_refactoring_summary()
         # Split into JS and CSS
         self._create_refactoring_sheet("JS")
         self._create_refactoring_sheet("CSS")
@@ -274,7 +277,7 @@ class Reporter:
     # --- JS Sheets ---
     def _create_inline_js_sheet(self):
         """1. Inline JS: Attributes (onclick, etc.)"""
-        headers = ["File Path", "File Name", "Context", "Line", "Code Snippet", "Full Code"]
+        headers = ["File Path", "File Name", "Context", "Line Start", "Line End", "Code Snippet", "Full Code"]
         data = []
         # Filter: JS + Inline Source + NOT Script Block
         findings = [f for f in self.findings if f.category == 'JS' and f.source_type == 'INLINE' and f.code_type != 'scriptblock']
@@ -285,6 +288,7 @@ class Reporter:
                 os.path.basename(f.file_path),
                 f.code_type,
                 f.start_line,
+                f.end_line,
                 f.snippet,
                 f.full_code
             ])
@@ -292,7 +296,7 @@ class Reporter:
 
     def _create_internal_js_sheet(self):
         """2. Internal JS: Script Blocks"""
-        headers = ["File Path", "File Name", "Extracted File", "Line", "Length (Lines)", "AJAX?", "Code Snippet", "Full Code"]
+        headers = ["File Path", "File Name", "Extracted File", "Line Start", "Line End", "Length (Lines)", "AJAX?", "Code Snippet", "Full Code"]
         data = []
         # Filter: JS + Inline Source + IS Script Block
         findings = [f for f in self.findings if f.category == 'JS' and f.source_type == 'INLINE' and f.code_type == 'scriptblock']
@@ -302,7 +306,9 @@ class Reporter:
                 f.file_path,
                 os.path.basename(f.file_path),
                 f.bundled_file,
+                f.bundled_file,
                 f.start_line,
+                f.end_line,
                 (f.end_line - f.start_line),
                 "Yes" if f.ajax_detected else "No",
                 f.snippet,
@@ -313,7 +319,7 @@ class Reporter:
     def _create_external_js_sheet(self):
         """3. External JS: Local Files & Remote References"""
         # Added "Contains AJAX?" column
-        headers = ["File Path", "File Name", "Reference Type", "Source/URL", "Contains AJAX?", "Line", "Is Remote?"]
+        headers = ["File Path", "File Name", "Reference Type", "Source/URL", "Contains AJAX?", "Line Start", "Line End", "Is Remote?"]
         data = []
         
         # Filter: 
@@ -343,6 +349,7 @@ class Reporter:
                 src_url,
                 ajax_status,
                 f.start_line,
+                f.end_line,
                 is_remote
             ])
         self._create_sheet("External JS (Files)", headers, data)
@@ -350,7 +357,7 @@ class Reporter:
     # --- CSS Sheets ---
     def _create_inline_css_sheet(self):
         """1. Inline CSS: Attributes (style=...)"""
-        headers = ["File Path", "File Name", "Attribute", "Line", "Code Snippet"]
+        headers = ["File Path", "File Name", "Attribute", "Line Start", "Line End", "Code Snippet"]
         data = []
         # Filter: CSS + Inline Source + NOT Style Block
         findings = [f for f in self.findings if f.category == 'CSS' and f.source_type == 'INLINE' and 'styleblock' not in f.code_type]
@@ -360,14 +367,16 @@ class Reporter:
                 f.file_path,
                 os.path.basename(f.file_path),
                 f.code_type,
+                f.code_type,
                 f.start_line,
+                f.end_line,
                 f.snippet
             ])
         self._create_sheet("Inline CSS (Attributes)", headers, data)
 
     def _create_internal_css_sheet(self):
         """2. Internal CSS: Style Blocks"""
-        headers = ["File Path", "File Name", "Extracted File", "Line", "Code Snippet", "Full Code"]
+        headers = ["File Path", "File Name", "Extracted File", "Line Start", "Line End", "Code Snippet", "Full Code"]
         data = []
         # Filter: CSS + Inline Source + IS Style Block
         findings = [f for f in self.findings if f.category == 'CSS' and f.source_type == 'INLINE' and 'styleblock' in f.code_type]
@@ -377,7 +386,9 @@ class Reporter:
                 f.file_path,
                 os.path.basename(f.file_path),
                 f.bundled_file,
+                f.bundled_file,
                 f.start_line,
+                f.end_line,
                 f.snippet,
                 f.full_code
             ])
@@ -385,7 +396,7 @@ class Reporter:
 
     def _create_external_css_sheet(self):
         """3. External CSS: Local Files & Remote References"""
-        headers = ["File Path", "File Name", "Reference Type", "Source/URL", "Line", "Is Remote?"]
+        headers = ["File Path", "File Name", "Reference Type", "Source/URL", "Line Start", "Line End", "Is Remote?"]
         data = []
         
         # Filter: 
@@ -406,6 +417,7 @@ class Reporter:
                 f.code_type,
                 src_url,
                 f.start_line,
+                f.end_line,
                 is_remote
             ])
         self._create_sheet("External CSS (Files)", headers, data)
@@ -548,7 +560,7 @@ class Reporter:
         sheet_title = f"{category_filter} Refactoring" if category_filter else "Refactoring Tracker"
         
         headers = [
-            "Ref ID", "Location", "Code Type", "Functionality", "Complexity", 
+            "Ref ID", "Location", "Code Type", "Functionality", "Complexity", "AJAX?", 
             "Extraction Status", "Target Filename", "Recommended Method", "Dev Notes"
         ]
         data = []
@@ -584,6 +596,11 @@ class Reporter:
             clean_path = self._get_relative_path(f.file_path).replace(os.sep, "_").replace(".", "_")
             ext = ".js" if f.category == 'JS' else ".css"
             clean_type = "".join([c for c in f.code_type if c.isalnum()])
+            # Generate Target Filename Recommendation (Strict Convention)
+            # {OriginalFilePath}_{BlockType}_line{Start}-{End}.{Extension}
+            clean_path = self._get_relative_path(f.file_path).replace(os.sep, "_").replace(".", "_")
+            ext = ".js" if f.category == 'JS' else ".css"
+            clean_type = "".join([c for c in f.code_type if c.isalnum()])
             target_name = f"{clean_path}_{clean_type}_L{f.start_line}-L{f.end_line}{ext}"
             
             # Ref ID
@@ -596,6 +613,7 @@ class Reporter:
                 f.code_type,
                 f.functionality,
                 f.complexity,
+                "Yes" if f.ajax_detected else "No",
                 status,
                 target_name,
                 method,
@@ -609,7 +627,7 @@ class Reporter:
         if sheet_title in self.wb.sheetnames:
             ws = self.wb[sheet_title]
             for row in range(2, ws.max_row + 1):
-                status_cell = ws.cell(row=row, column=6)
+                status_cell = ws.cell(row=row, column=7)
                 val = status_cell.value
                 if "Blocked" in val:
                     status_cell.fill = PatternFill("solid", fgColor="FFC7CE") # Red
@@ -620,6 +638,63 @@ class Reporter:
                 elif "Ready" in val:
                     status_cell.fill = PatternFill("solid", fgColor="C6EFCE") # Green
                     status_cell.font = Font(color="006100")
+
+    def _create_refactoring_summary(self):
+        """Creates a Dashboard Summary for the Refactoring Tracker."""
+        ws = self.wb.create_sheet("Summary")
+        
+        # metrics
+        total_items = len(self.findings)
+        
+        # Status Counts (Heuristic matches logic in _create_refactoring_sheet)
+        ready_count = 0
+        blocked_count = 0
+        rewrite_count = 0
+        manual_count = 0
+        
+        for f in self.findings:
+            if f.server_severity == "High": blocked_count += 1
+            elif f.server_severity == "Medium": rewrite_count += 1
+            elif f.complexity == "High": manual_count += 1
+            else: ready_count += 1
+            
+        # JS vs CSS
+        js_count = len([f for f in self.findings if f.category == 'JS'])
+        css_count = len([f for f in self.findings if f.category == 'CSS'])
+        
+        # AJAX impact
+        ajax_items = len([f for f in self.findings if f.ajax_detected])
+        
+        ws.cell(row=1, column=1, value="Refactoring Assessment Dashboard").font = Font(bold=True, size=16, color="2F75B5")
+        
+        headers = ["Metric", "Count", "Description"]
+        data = [
+            ("Total Candidates", total_items, "Total code blocks identified for potential extraction"),
+            ("🟢 Ready to Extract", ready_count, "Safe logic, no server dependencies. Can be automated."),
+            ("🔴 Blocked", blocked_count, "High Server Severity. Contains @Model, ASP tags. Must NOT move."),
+            ("🟡 Needs Rewrite", rewrite_count, "Medium Severity. Contains @Url.Action etc."),
+            ("🟡 Manual Review", manual_count, "High Complexity Logic. Recommended for component conversion."),
+            ("", "", ""),
+            ("JavaScript Blocks", js_count, ""),
+            ("CSS Blocks", css_count, ""),
+            ("Blocks with AJAX", ajax_items, "Code containing network calls (riskier to move without testing)"),
+        ]
+        
+        # Header Row
+        for col, h in enumerate(headers, 1):
+            cell = ws.cell(row=3, column=col, value=h)
+            cell.font = Font(bold=True, color="FFFFFF")
+            cell.fill = PatternFill("solid", fgColor="4F81BD")
+            
+        # Data
+        for i, (metric, count, desc) in enumerate(data):
+            r = 4 + i
+            ws.cell(row=r, column=1, value=metric)
+            ws.cell(row=r, column=2, value=count)
+            ws.cell(row=r, column=3, value=desc)
+            
+        ws.column_dimensions['A'].width = 30
+        ws.column_dimensions['C'].width = 60
 
     def _create_legend_sheet(self):
         """Creates a Legend tab explaining the metrics."""

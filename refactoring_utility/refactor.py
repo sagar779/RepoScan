@@ -11,7 +11,9 @@ def parse_extracted_filename(filename):
     """
     try:
         # Regex to find the _lineX-Y part
-        match = re.search(r'(.+)_([a-zA-Z0-9]+)_line(\d+)-(\d+)\.(js|css)$', filename)
+        # Updated to match user convention: _L{Start}-L{End}
+        # e.g. Views_Home_Index_cshtml_scriptblock_L10-L25.js
+        match = re.search(r'(.+)_([a-zA-Z0-9]+)_L(\d+)-L(\d+)\.(js|css)$', filename)
         if not match:
             return None
             

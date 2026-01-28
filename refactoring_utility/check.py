@@ -12,8 +12,8 @@ def parse_metadata(filename):
     """
     try:
         # Match the standard format defined in the tool
-        # Example: Views_Home_Index.cshtml_scriptblock_line10-25.js
-        match = re.search(r'(.+)_([a-zA-Z0-9]+)_line(\d+)-(\d+)\.(js|css)$', filename)
+        # Example: Views_Home_Index_cshtml_scriptblock_L10-L25.js
+        match = re.search(r'(.+)_([a-zA-Z0-9]+)_L(\d+)-L(\d+)\.(js|css)$', filename)
         if match:
             sanitized, code_type, start, end, ext = match.groups()
             # Best effort to restore path readability (replace underscores with slashes)

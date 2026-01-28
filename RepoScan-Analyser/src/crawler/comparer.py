@@ -18,28 +18,35 @@ class Comparer:
         try:
             wb = openpyxl.load_workbook(self.static_report_path, data_only=True)
             
-            # Identify columns dynamically
-            headers = [cell.value for cell in ws[1]]
-            
-            try:
-                # Find column indices (1-based for openpyxl)
-                snippet_col_idx = headers.index('Code Snippet') + 1
-                file_col_idx = headers.index('File Path') + 1
-                print(f"Loading static findings from '{ws.title}'...")
-            except ValueError:
-                print(f"Error: Required columns not found in '{ws.title}'. Headers: {headers}")
-                return
-
-            # Read rows
-            for row in range(2, ws.max_row + 1):
-                snippet = ws.cell(row=row, column=snippet_col_idx).value
-                filepath = ws.cell(row=row, column=file_col_idx).value
+            # Iterate through all sheets that might contain code
+            for sheet_name in wb.sheetnames:
+                if sheet_name in ["Summary", "Legend", "Output Manifest", "AJAX Code"]: continue
                 
-                if snippet:
-                    norm = normalize_snippet(str(snippet))
-                    if norm not in self.static_snippets:
-                        self.static_snippets[norm] = []
-                    self.static_snippets[norm].append({'file': filepath, 'row': row})
+                ws = wb[sheet_name]
+                # Identify columns dynamically
+                headers = [cell.value for cell in ws[1]]
+                
+                try:
+                    # Find column indices (1-based for openpyxl)
+                    if 'Code Snippet' not in headers or 'File Path' not in headers:
+                        continue
+                        
+                    snippet_col_idx = headers.index('Code Snippet') + 1
+                    file_col_idx = headers.index('File Path') + 1
+                    print(f"Loading static findings from '{ws.title}'...")
+                except ValueError:
+                    continue
+    
+                # Read rows
+                for row in range(2, ws.max_row + 1):
+                    snippet = ws.cell(row=row, column=snippet_col_idx).value
+                    filepath = ws.cell(row=row, column=file_col_idx).value
+                    
+                    if snippet:
+                        norm = normalize_snippet(str(snippet))
+                        if norm not in self.static_snippets:
+                            self.static_snippets[norm] = []
+                        self.static_snippets[norm].append({'file': filepath, 'row': row})
             
             print(f"Loaded {len(self.static_snippets)} unique static snippets.")
 
