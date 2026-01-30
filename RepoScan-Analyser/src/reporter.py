@@ -290,7 +290,7 @@ class Reporter:
                 f.start_line,
                 f.end_line,
                 f.snippet,
-                f.full_code
+                f.html_context if f.html_context else f.full_code
             ])
         self._create_sheet("Inline JS (Attributes)", headers, data)
 

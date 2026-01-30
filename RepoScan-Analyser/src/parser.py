@@ -5,7 +5,7 @@ from bs4 import BeautifulSoup
 import bs4
 
 class CodeSnippet:
-    def __init__(self, file_path: str, start_line: int, end_line: int, category: str, snippet: str, code_type: str, full_code: str = "", ajax_detected: bool = False, source_type: str = "INLINE"):
+    def __init__(self, file_path: str, start_line: int, end_line: int, category: str, snippet: str, code_type: str, full_code: str = "", ajax_detected: bool = False, source_type: str = "INLINE", html_context: str = ""):
         self.file_path = file_path
         self.start_line = start_line
         self.end_line = end_line
@@ -18,6 +18,7 @@ class CodeSnippet:
         self.dynamic_code_detected = False
         self.dynamic_count = 0
         self.source_type = source_type # 'INLINE', 'LOCAL', 'REMOTE'
+        self.html_context = html_context
         # AJAX-specific fields
         self.ajax_pattern = ""
         self.endpoint_url = ""
@@ -180,14 +181,14 @@ class Parser:
                     end_line = line_num + line_count
                     
                     snippet = f'{attr}="{full_code}"'
-                    findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', snippet, attr_lower, full_code=full_code, source_type='INLINE'))
+                    findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', snippet, attr_lower, full_code=full_code, source_type='INLINE', html_context=str(tag)))
                 
                 if attr_lower in ['href', 'src']:
                     val = tag[attr]
                     if isinstance(val, str) and val.lower().strip().startswith('javascript:'):
                         line_num = self._get_line_number(tag, raw_content, val)
                         end_line = line_num + val.count('\n')
-                        findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', val, 'jsuri', full_code=val, source_type='INLINE'))
+                        findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', val, 'jsuri', full_code=val, source_type='INLINE', html_context=str(tag)))
 
         # --- CSS ---
         # 1. Inline Style Blocks
