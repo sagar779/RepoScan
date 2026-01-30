@@ -136,6 +136,24 @@ class Parser:
                 findings.append(CodeSnippet(file_path, line_num, line_num, 'JS', line.strip(), 'jsuri', full_code=line.strip(), source_type='INLINE'))
         return findings
 
+    def _reconstruct_tag(self, tag: bs4.Tag) -> str:
+        """Reconstructs the opening tag with attributes."""
+        try:
+            attrs_list = []
+            for k, v in tag.attrs.items():
+                if isinstance(v, list):
+                    v = " ".join(v)
+                # Escaping quotes to prevent malformed string
+                v_escaped = str(v).replace('"', '&quot;')
+                attrs_list.append(f'{k}="{v_escaped}"')
+            
+            attrs_str = " ".join(attrs_list)
+            return f"<{tag.name} {attrs_str}>"
+        except Exception:
+            # Fallback to string representation but try to avoid massive inner content if possible
+            # But str(tag) is recursive.
+            return str(tag)[:300]
+
     def _scan_dom(self, file_path: str, soup: BeautifulSoup, raw_content: str) -> List[CodeSnippet]:
         findings = []
         
@@ -171,23 +189,27 @@ class Parser:
                 attr_lower = attr.lower()
                 if attr_lower in self.event_handlers:
                     val = tag[attr]
-                    full_code = str(val)
+                    
+                    full_code = self._reconstruct_tag(tag)
+                        
                     line_num = self._get_line_number(tag, raw_content, full_code)
                     
                     # Event handlers are attributes, usually start/end on same tag line or close. 
                     # Approximate end line by counting newlines in the attribute value.
-                    line_count = full_code.count('\n')
+                    line_count = str(val).count('\n')
                     end_line = line_num + line_count
                     
-                    snippet = f'{attr}="{full_code}"'
+                    snippet = f'{attr}="{val}"'
                     findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', snippet, attr_lower, full_code=full_code, source_type='INLINE'))
                 
                 if attr_lower in ['href', 'src']:
                     val = tag[attr]
                     if isinstance(val, str) and val.lower().strip().startswith('javascript:'):
+                        full_code = self._reconstruct_tag(tag)
+                        
                         line_num = self._get_line_number(tag, raw_content, val)
                         end_line = line_num + val.count('\n')
-                        findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', val, 'jsuri', full_code=val, source_type='INLINE'))
+                        findings.append(CodeSnippet(file_path, line_num, end_line, 'JS', val, 'jsuri', full_code=full_code, source_type='INLINE'))
 
         # --- CSS ---
         # 1. Inline Style Blocks
